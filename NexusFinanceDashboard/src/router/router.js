@@ -3,6 +3,7 @@ import Home from "@/views/TopRow.vue"; // Import your components
 import Transactions from "../views/Transactions.vue"
 import Settings from "@/views/Settings.vue";
 import Reports from "@/views/Reports.vue";
+import { createRouter, createWebHashHistory } from 'vue-router'
 
 const routes = [
   {
@@ -28,7 +29,7 @@ const routes = [
 ];
 
 const router = createRouter({
-  history: createWebHistory(), // Use HTML5 history mode (recommended)
+  history: createWebHashHistory('/NexusFinanceDashboard/'),
   routes,
 });
 
