@@ -1,4 +1,3 @@
-import { createWebHistory, createRouter } from "vue-router";
 import Home from "@/views/TopRow.vue"; // Import your components
 import Transactions from "../views/Transactions.vue"
 import Settings from "@/views/Settings.vue";
