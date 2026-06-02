@@ -1,17 +1,58 @@
 <script setup>
     import { ref } from 'vue';
-    const isVisible = ref(false)
+    import axios from 'axios';
+    import { onMounted } from 'vue';
+    
+    const isVisible = ref(false);
+    const transactions = ref([])
+
+    const getData = async () => {
+        try{
+            const response = await axios.get("http://localhost:5000/Transactions")
+
+            transactions.value = response.data.map((tx, index) => {
+                const rawDate = new Date(tx.transaction_date);
+
+                const formattedDate = rawDate.toLocaleDateString('en-US',{
+                    weekday: 'short',
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric'
+                })
+                return {
+                    id: tx.id,
+                    name: tx.transaction_name,
+                    amount: parseFloat(tx.transaction_value) || 0,
+                    date: formattedDate,
+                    category: 'General',
+                    icon: 'fa-wallet',
+                    type: 'expense'
+                }
+            });
+        }catch(error){
+            console.error("Error fetching data", error)
+        }
+    }
+
+    const deleteTransaction = async (id) => {
+        try {
+            const response = await axios.delete(`http://localhost:5000/Transactions/${id}`);
+            if (response.status === 200) {
+                transactions.value = transactions.value.filter(tx => tx.id !== id);
+            }
+        } catch (error) {
+            console.error("Error deleting transaction:", error);
+            alert("Failed to delete transaction.");
+        }
+    }
 
     function toggleSiderbar() {
         isVisible.value = !isVisible.value;
     }
 
-    const transactions = ref([
-        {id: 1, name: 'Amazon', category: 'Shopping', amount: 84.99, date: 'Feb 05', icon: 'fa-bag-shopping', type: 'expense'},
-        {id: 2, name: 'Starbucks', category: 'Food & Drinks', amount: 12.50, date: 'Feb 04', icon: 'fa-mug-hot', type: 'expense'},
-        {id: 3, name: 'Salary Deposit', category: 'Income', amount: 2600, date: 'Feb 01', icon: 'fa-wallet', type: 'income'},
-        {id: 4, name: 'Netflix', category: 'Entertainment', amount: 15.99, date: 'Jan 28', icon: 'fa-play', type: 'expense'},
-    ])
+    onMounted(() => {
+        getData()
+    })
 </script>
 
 <template>
@@ -26,7 +67,7 @@
     </div>
     <Transition name="slide">
         <div class="SideBar" id="SideBar" v-show="isVisible">
-            <RouterLink to="/" class="a">Home</RouterLink>
+            <RouterLink to="/Home" class="a">Home</RouterLink>
             <RouterLink to="/Transactions" class="a">Transactions</RouterLink>
             <RouterLink to="/Reports" class="a">Reports</RouterLink>
             <RouterLink to="/Settings" class="a">Settings</RouterLink>
@@ -40,22 +81,28 @@
             <p>Your recent activity and spending history</p>
         </div>
         <div class="transaction-feed">
-            <div v-for="tx in transactions" :key="tx.id" class="tx-card">
-                <div class="tx-icon-wrapper" :class="tx.type">
-                    <i :class="['fa-solid', tx.icon]"></i>
-                </div>
-                <div class="tx-info">
-                    <span class="merchant-name">{{ tx.name }}</span>
-                    <span class="category-tag">{{ tx.category }}</span>
-                </div>
-                <div class="tx-side-info">
-                    <span class="amount" :class="tx.type">
-                        {{ tx.type === "expense" ? '-' : '+'}}${{ tx.amount.toFixed(2) }}
-                    </span>
-                    <span class="date">{{ tx.date }}</span>
-                </div>
+        <div v-for="tx in transactions" :key="tx.id" class="tx-card">
+            <div class="tx-icon-wrapper" :class="tx.type">
+                <i :class="['fa-solid', tx.icon]"></i>
+            </div>
+            <div class="tx-info">
+                <span class="merchant-name">{{ tx.name }}</span>
+                <span class="category-tag">{{ tx.category }}</span>
+            </div>
+            <div class="tx-side-info">
+                <span class="amount" :class="tx.type">
+                    {{ tx.type === "expense" ? '-' : '+'}}${{ tx.amount.toFixed(2) }}
+                </span>
+                <span class="date">{{ tx.date }}</span>
+            </div>
+            
+            <div class="tx-actions">
+                <button class="delete-btn" @click="deleteTransaction(tx.id)" title="Delete Transaction">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
             </div>
         </div>
+    </div>
     </div>
 </template>
 
@@ -84,7 +131,7 @@
     @keyframes DownEnter {
         from {
             opacity: 0;
-            transform: translateY(300px);
+            transform: translateY(100px);
         }
 
         to {
@@ -126,8 +173,9 @@
         z-index: -1;
     }
 
-    .a:hover {
+    .a[data-v-817427b0]:hover {
         color: #ffffff;
+        background: rgba(129, 140, 248, 0.1);
         text-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
     }
 
@@ -142,10 +190,11 @@
         height: 97vh;
         margin-left: 10px;
         margin-top: 10px;
-        background: rgba(255, 255, 255, 0.15);
-        border-radius: 16px;
-        box-shadow: 0 4px 30px rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.025);
+        box-shadow: 0 4px 30px rgb(0, 0, 0, 0.1);
         backdrop-filter: blur(5px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 16px;
         position: fixed;
         left: 0;
         top: 0;
@@ -182,9 +231,10 @@
     .tx-card {
         display: flex;
         align-items: center;
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.025);
+        box-shadow: 0 4px 30px rgb(0, 0, 0, 0.1);
+        backdrop-filter: blur(5px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
         padding: 16px;
         border-radius: 16px;
         transition: transform 0.2s;
@@ -235,13 +285,38 @@
         flex-direction: column;
     }
 
+    .tx-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between; /* Ensures side info elements push content wide across row widths */
+    }
+
+    .tx-actions {
+        margin-left: 20px;
+    }
+
+    .delete-btn {
+        background: transparent;
+        border: none;
+        color: #ef4444; /* Clean modern crimson tint */
+        cursor: pointer;
+        padding: 8px;
+        font-size: 1.1rem;
+        transition: transform 0.2s ease, color 0.2s ease;
+    }
+
+    .delete-btn:hover {
+        color: #b91c1c; /* Deeper red on hover state */
+        transform: scale(1.15); /* Subtle pop effect */
+    }
+
     .amount {
         font-weight: 700;
         font-size: 1.1rem;
     }
 
     .amount.income { color: #4ade80; }
-    .amount.expense { color: white; }
+    .amount.expense { color: white; margin-bottom: 3px; }
 
     .date {
         font-size: 0.75rem;
@@ -250,16 +325,17 @@
 
     .Side {
         position: fixed;
-        top: 20px;
-        left: 20px;
+        top: 25px;
+        left: 25px;
         color: white;
+        font-size: 1.5rem;
         cursor: pointer;
         z-index: 2000;
     }
 
     @media (max-width: 768px) {
         .SideBar {
-            width: 75%; /* More width on mobile for easier tapping */
+            width: 50%; /* More width on mobile for easier tapping */
             height: 100%;
             margin: 0;
             border-radius: 0 16px 16px 0;
@@ -272,7 +348,7 @@
 
         /* On mobile, we DON'T shift the container, we just blur it */
         .main-container.Shifted {
-            padding-left: 15px; 
+            padding: 0px;
             filter: blur(4px);
             pointer-events: none; /* Prevent clicking transactions while menu is open */
         }
@@ -283,6 +359,26 @@
 
         .tx-card {
             padding: 12px; /* Tighter padding for smaller screens */
+        }
+    }
+
+    @media (max-width: 1024px){
+        .main-container.Shifted{
+            padding: 0px;
+            /* margin: 0px; */
+            filter: blur(4px);
+            pointer-events: none;
+            transform: translateX(0px);
+            transform: translateY(0px);
+        }
+
+        .SideBar {
+            width: 65%;
+        }
+
+        .SideBar a {
+            line-height: 2.5rem;
+            font-size: 2.5vw;
         }
     }
 </style>

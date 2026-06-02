@@ -1,19 +1,212 @@
 <script setup>
     import { RouterLink } from 'vue-router';
-    import { ref, onMounted } from 'vue';
+    import { ref, onMounted, nextTick, computed } from 'vue';
     import { Bar } from 'vue-chartjs'
     import { Line } from 'vue-chartjs';
+    import axios from 'axios';
     import {Chart as ChartJS, Title, Tooltip, Legend, LineElement, LineController, CategoryScale, LinearScale, PointElement, Filler, BarElement, BarController} from 'chart.js'
 
     ChartJS.register(Title, Tooltip, Legend, LineElement, LineController, CategoryScale, LinearScale, PointElement, Filler, BarElement, BarController)
 
+    const isLoadingHome = ref(true)
     const isVisible = ref(false)
     const middleRowRef = ref(null);
     const tableRowRef = ref(null)
     const isIntersecting = ref(false);
-    const isTableVisible = ref(false)
+    const isTableVisible = ref(false);
+    const Home = ref(0);
+    const progress = ref(100);
+    const calculationsData = ref({});
+    const homeMetrics = ref({
+        total_savings: 0,
+        monthly_contributed: 0,
+        debt_contributions: 0,
+    });
+    const tables = ref([])
 
+    const formatCompletionDate = (dateString) => {
+        if (!dateString || dateString === '---') return '---';
+        const date = new Date(dateString);
+        // If the backend returns a clean date string, parse it natively
+        if (!isNaN(date.getTime())) {
+            return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        }
+        return dateString; // Fallback to raw string if it's already pre-formatted
+    };
+
+    const isProfileIncomplete = computed(() => {
+        const data = calculationsData.value;
+        return !data || !data.savings_target || data.savings_target === 0;
+    })
+
+    const getProjectedDate = (monthsToGoal) => {
+        if (!monthsToGoal || isNaN(monthsToGoal)) return '---';
+        const d = new Date();
+        d.setMonth(d.getMonth() + monthsToGoal);
+        return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    };
+
+    // Updated Progress calculations ensuring they return 0 if data isn't loaded yet
+    // Safeguarded Progress Calculations to handle 0 values gracefully
+    const balancedProgress = computed(() => {
+        const target = calculationsData.value.savings_target;
+        const current = calculationsData.value.balance_36mo;
+        if (!target || !current || target === 0) return 0;
+        return Math.min(Math.round((current / target) * 100), 100);
+    });
+
+    const aggressiveProgress = computed(() => {
+        const target = calculationsData.value.savings_target;
+        const current = calculationsData.value.balance_36mo;
+        if (!target || !current || target === 0) return 0;
+        return Math.min(Math.round(((current * 1.20) / target) * 100), 100);
+    });
+
+    const conservativeProgress = computed(() => {
+        const target = calculationsData.value.savings_target;
+        const current = calculationsData.value.balance_36mo;
+        if (!target || !current || target === 0) return 0;
+        return Math.min(Math.round(((current * 0.80) / target) * 100), 100);
+    });
+
+    const getDigitsArray = (num, length) => {
+        const str = Math.floor(num).toString().padStart(length, '0');
+        return str.split('').map(Number);
+    }
+
+    const fetchHomeData = async () => {
+        try {
+            isLoadingHome.value = true;
+            const response = await axios.get("http://localhost:5000/home");
+
+            if (response.data && response.data.profile){
+                calculationsData.value = response.data.profile;
+            }
+            const baseSavings = response.data.base_savings || 0;
+            const history = response.data.savings_history || [];
+            const debtHistory = response.data.debt || [];
+
+            // Calculate total savings by summing up historical contributions
+            const totalContributions = history.reduce((sum, val) => sum + val, 0);
+            const backendChartData = response.data.monthly_averages_chart || [];
+
+            // Get the latest monthly contribution added (or default to 0)
+            const currentMonthlyContributed = history.length > 0 ? history[history.length - 1] : 0;
+            const currentDebtContributions = debtHistory.length > 0 ? debtHistory[debtHistory.length - 1]: 0;
+
+            // Assign the computed values to your reactive state
+            homeMetrics.value = {
+                total_savings: baseSavings + totalContributions, // Base savings + ongoing add-ons
+                monthly_contributed: currentMonthlyContributed,
+                debt_contributions: currentDebtContributions
+            };
+
+            const targetGoal = 10000;
+            const calculationPrecentage = (currentDebtContributions/ targetGoal) * 100;
+            Home.value = Math.min(calculationPrecentage, 100)
+
+            if (backendChartData.length > 0){
+                chartData2.value = {
+                    labels: [...chartData2.value.labels], // keeps your months labels
+                    datasets: [{
+                        ...chartData2.value.datasets[0],
+                        data: backendChartData
+                    }]
+                 };
+
+                const activeMonths = backendChartData.filter(val => val !== 0);
+                const totalSum = activeMonths.reduce((a, b) => a + b, 0)
+                const finalAverage = activeMonths.length > 0 ? totalSum / activeMonths.length : 0;
+
+                overallAverageLabel.value = `$${finalAverage.toFixed(2)}`
+            }
+
+            await nextTick();
+            setTimeout(() => {
+                animateCounters();
+            }, 1600);
+        } catch(error) {
+            console.error("Error fetching home data: ", error)
+        }finally{
+            isLoadingHome.value = false;
+        }
+    }
+
+    const fetchSubscriptions = async () => {
+        try{
+            const response = await axios.get("http://localhost:5000/api/subscriptions")
+            tables.value = response.data.map(item => ({
+                id: item.id,
+                name: item.subscription_name,
+                value: `${item.subscription_price}$`,
+                status: item.subscriptions_status || 'Pending'
+            }))
+        }catch(error){
+            console.error("Error connecting with backend subscription pipeline", error)
+        }
+    }
+
+    const deleteSubscription = async (id) => {
+        try{
+            const response = await axios.delete(`http://localhost:5000/api/subscriptions/${id}`)
+            if (response.status === 200) {
+                tables.value = tables.value.filter(tx => tx.id !== id);
+            }
+        }catch(error){
+            console.error("Error deleting the subscription", error)
+        }
+    }
+
+    const animateCounters = () => {
+        // 1. Total Savings
+        const savingsValue = Number(homeMetrics.value.total_savings) || 0;
+        const totalSavingsDigits = getDigitsArray(homeMetrics.value.total_savings, 6);
+        totalSavingsDigits.forEach((digitValue, index) => {
+            const el = document.getElementById(`dig-${index + 1}`);
+            if(el) setNumber(el, digitValue);
+        });
+
+        const monthlyValue = Number(homeMetrics.value.monthly_contributed) || 0
+        const monthlyContDigits = getDigitsArray(monthlyValue, 4);
+        monthlyContDigits.forEach((digitValue, index) => {
+            const el = document.getElementById(`digi-${index + 1}`);
+            if(el){
+                setNumber(el, digitValue);
+            } else {
+                console.error(`Missing DOM ID: "digi-${index + 1}" was not found.`)
+            }
+        });
+
+        // 3. Home Downpayment
+        const debtValue = Number(homeMetrics.value.debt_contributions) || 0;
+        const homeDebtDigits = getDigitsArray(debtValue, 4);
+        homeDebtDigits.forEach((digitValue, index) => {
+            const el = document.getElementById(`digit-${index + 1}`);
+            if(el){
+             setNumber(el, digitValue);
+            }else{
+                console.error(`Missing DOM ID: "digit-${index + 1}" was not found.`)
+            }  
+        });
+        const getPrecent = (currentVal, min= 500, max= 7500) => {
+            return ((currentVal - min) / (max - min)) *100;
+        }
+    };
+
+
+    // const GetData = async () => {
+    //     try{
+    //         const response = await axios.get("http://localhost:5000/home")
+    //         calculationsData.value = response.data
+    //     }catch(error){
+    //         console.error('error sending data', error)
+    //     }
+    // }
+    
 onMounted(() => {
+    fetchHomeData()
+    fetchSubscriptions()
+    // GetData()
     const observerOptions = {
         threshold: 0.4, 
         rootMargin: "0px 0px -50px 0px"
@@ -40,6 +233,7 @@ onMounted(() => {
     if (middleRowRef.value) observer.observe(middleRowRef.value);
     if (tableRowRef.value) observer.observe(tableRowRef.value);
     });
+
     const chartData = {
         labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4',],
         datasets: [{
@@ -54,11 +248,11 @@ onMounted(() => {
         }]
     }
 
-    const chartData2 = {
+    const chartData2 = ref({
         labels: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
         datasets: [{
-            label: 'Monthly Average', 
-            data: [2180, 2400, 2450, 2600, 2400, 2500, 3200, 3500, 4000, 3720, 3500, 4125],
+            label: 'Net Flow Surplus', 
+            data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             borderColor: '#818CF8',
             backgroundColor: 'rgba(129, 140, 248, 0.2)',
             fill: true,
@@ -66,7 +260,9 @@ onMounted(() => {
             pointRadius: 4,
             pointBackgroundColor: '#ffffff'
         }]
-    }
+    })
+
+    const overallAverageLabel = ref("0$")
 
     const ChartData3 = {
         labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
@@ -112,87 +308,222 @@ onMounted(() => {
         }
     }
 
-    const tables = [
-        {id:1, name: 'Netflix', value: '30$', status: 'Paid'},
-        {id:2, name: 'Hulu', value: '20$', status: 'Pending'},
-        {id:3, name: 'Spotify', value: '9.99$', status: 'Paid'},
-        {id:4, name: 'Youtube Premium', value: '12$', status: 'Paid'},
-        {id:5, name: 'ChatGpt Plus', value: '45$', status: 'Pending'},
-    ]
+    // const tables = [
+    //     {id:1, name: 'Netflix', value: '30$', status: 'Paid'},
+    //     {id:2, name: 'Hulu', value: '20$', status: 'Pending'},
+    //     {id:3, name: 'Spotify', value: '9.99$', status: 'Paid'},
+    //     {id:4, name: 'Youtube Premium', value: '12$', status: 'Paid'},
+    //     {id:5, name: 'ChatGpt Plus', value: '45$', status: 'Pending'},
+    // ]
 
     function toggleSiderbar() {
         isVisible.value = !isVisible.value;
     }
+
+    function setNumber(digitElement, value) {
+        const height = 50;
+        const offset = value * height;
+        digitElement.style.transform = `translateY(-${offset}px)`
+    }
+
 </script>
 
 <template>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Manrope:wght@200..800&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css" integrity="sha512-2SwdPD6INVrV/lHTZbO2nodKhrnDdJK9/kg2XD1r9uGqPo1cUbujc+IYdlYdEErWNu69gVcYgdxlmVmzTWnetw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
     <div class="Side" id="side">
         <i class="fa-solid fa-bars" id="icon" @click="toggleSiderbar" style="margin-left: 15px; margin-top: 20px"></i>
     </div>
     <Transition name="slide">
         <div class="SideBar" id="SideBar" v-show="isVisible">
-            <RouterLink to="/" class="a">Home</RouterLink>
+            <RouterLink to="/Home" class="a">Home</RouterLink>
             <RouterLink to="/Transactions" class="a">Transactions</RouterLink>
             <RouterLink to="/Reports" class="a">Reports</RouterLink>
             <RouterLink to="/Settings" class="a">Settings</RouterLink>
         </div>
     </Transition>
     <div class="main-container" :class="{'Shifted' : isVisible}">
+        <div class="titleContainer" :class="{shifted: isVisible}">
+            <h1 class="mainTitle">Watch your money</h1>
+            <h2 class="subTitle">learn where to go.</h2>
+            <p class="titleDisc">Three goals. One dashboard. Every dollar tagged, every milestone mapped against a timeline only you control.</p>
+        </div>
         <div class="hero">
             <div class="Card1">
-                <div class="chart-wrapper">
-                    <Line :data="chartData" :options="chartOptions" />
-                </div>
-                <h2>Total Spent</h2>
-                <p>Total amount spent for January is 1930$</p>
+                <div class="w-8" style="background:rgba(163,163,181,0.1)"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true" data-slot="icon" width="16" height="16" class=" text-[#A3A3B5]"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"></path></svg></div>
+                <h3>Small numbers, exponential outcomes.</h3>
+                <p class="bor">Depositing $23 every weekday — the cost of one lunch — yields $6,240 in twelve months. Not because $23 is large. Because it never stops.</p>
+                <h2 class="colGreen">$8,395</h2>
+                <p class="Mini">From $23/day over 12 Months.</p>
             </div>
             <div class="Card2">
                 <div class="chart-wrapper">
-                    <Line :data="chartData2" :options="chartOptions" />
+                    <Line v-if="!isLoadingHome && chartData2.datasets[0].data.some(val => val !== 0)" :data="chartData2" :options="chartOptions" />
+                    <div v-else-if="isLoadingHome" class="graph-placeholder">
+                        <i class="fa-solid fa-circle-notch fa-spin placeholder-icon"></i>
+                        <p>Loading your financial data...</p>
+                    </div>
+                    <div v-else class="graph-placeholder">
+                        <i class="fa-solid fa-chart-line placeholder-icon"></i>
+                        <p>Missing critical information</p>
+                        <span>Please fill the required information in settings</span>
+                    </div>
                 </div>
                 <h2>Monthly average</h2>
-                <p>Your monthly average is 2922.92$</p>
+                <p>Your monthly average is {{ overallAverageLabel }}</p>
             </div>
             <div class="Card3">
-                <div class="chart-wrapper">
-                    <Bar :data="ChartData3" :options="chartOptions" />
+                <h2 class="subject">Home Down Payment</h2>
+                <div class="counter-row">
+                    <span class="currency-symbol">$</span>
+                    <div v-for="i in 4" :key="i" class="counter">
+                        <div class="digit-slot">
+                            <div class="digit-strip" :id="'digit-' + i">
+                                <span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <h2>Active Subscriptions</h2>
-                <p>Current active subscription is 2</p>
+                <p class="target">Of $10,000 target</p>
+                <div class="Pro-container">
+                    <div class="Pro" :style="{width: Home + '%'}"></div>
+                </div>
             </div>
         </div>
-        <div ref="middleRowRef" class="MiddleRow" :class="{ 'animate-trigger': isIntersecting }">
-            <div class="middle-card">
-                <div class="middle-chart-wrapper">
-                    <Line :data="MidlleRowGraph" :options="chartOptions"></Line>
+        <div class="horCardContainer">
+            <div class="horCard">
+                <div class="totSave">
+                    <h5>Total Saved</h5>
+                    <div class="counter-row">
+                        <span class="currency-symbol">$</span>
+                        <div v-for="i in 6" :key="i" class="counter">
+                            <div class="digit-slot">
+                                <div class="digit-strip" :id="'dig-' + i">
+                                    <span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <h2>Deep Dive</h2>
-                <p>Spending over last 6 months analysis.</p>
+                <div class="monthCont">
+                    <h5>Monthly Contributed</h5>
+                    <div class="counter-row">
+                        <span class="currency-symbol">$</span>
+                        <div v-for="i in 4" :key="i" class="counter">
+                            <div class="digit-slot">
+                                <div class="digit-strip" :id="'digi-' + i">
+                                    <span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="bottomRow" ref="tableRowRef">
-            <Transition name="fade">
-                <table v-if="isTableVisible">
-                    <thead>
-                        <tr>
-                            <th>Number</th>
-                            <th>Subscriptions</th>
-                            <th>Value</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <TransitionGroup name="list" tag="tbody" appear>
-                        <tr v-for="( item, index ) in tables" :key="item.id" :style="{ transitionDelay: `${index * 0.1}s` }">
-                            <td>{{ item.id }}</td>
-                            <td>{{ item.name }}</td>
-                            <td>{{ item.value }}</td>
-                            <td>{{ item.status }}</td>
-                        </tr>
-                    </TransitionGroup>
-                </table>
-            </Transition>
+        <div class="grid-transition-zone">
+            <div ref="middleRowRef" class="MiddleRow" :class="{ 'animate-trigger': isIntersecting }">
+                <div class="middle-card">
+                    <table class="plan">
+                        <thead>
+                            <tr>
+                                <th class="Met">Metric</th>
+                                <th>Aggressive</th>
+                                <th>Balanced</th>
+                                <th class="Con">Conservative</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="mon">Monthly Savings</td>
+                                <td id="plan">${{ Number(calculationsData.monthly_savings * 1.20 || 0).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0}) }}</td>
+                                <td id="plan">${{ Number(calculationsData.monthly_savings || 0).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0}) }}</td>
+                                <td id="plan">${{ Number(calculationsData.monthly_savings * 0.80 || 0).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0}) }}</td>
+                            </tr>
+                            <tr>
+                                <td class="mon">Savings Rate</td>
+                                <td id="plan">{{ (calculationsData.savings_rate * 1.20 || 0).toFixed(1) }}%</td>
+                                <td id="plan">{{ calculationsData.savings_rate || 0 }}%</td>
+                                <td id="plan">{{ (calculationsData.savings_rate * 0.80 || 0).toFixed(1) }}%</td>
+                            </tr>
+                            <tr>
+                                <td class="mon">Balance at 36mo</td>
+                                <td id="plan">${{ Number(calculationsData.balance_36mo * 1.20 || 0).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0}) }}</td>
+                                <td id="plan">${{ Number(calculationsData.balance_36mo || 0).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0}) }}</td>
+                                <td id="plan">${{ Number(calculationsData.balance_36mo * 0.80 || 0).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0}) }}</td>
+                            </tr>
+                            <tr>
+                                <td class="mon">Target Timeline</td>
+                                <td>{{ calculationsData.time_to_goal ? calculationsData.time_to_goal - 4 : 0 }} Months</td>
+                                <td>{{ calculationsData.time_to_goal || 0 }} Months</td>
+                                <td>{{ calculationsData.time_to_goal ? calculationsData.time_to_goal + 12 : 0 }} Months</td>
+                            </tr>
+                            <tr>
+                                <td class="mon">Completion Date</td>
+                                <td id="plan">{{ getProjectedDate(calculationsData.time_to_goal ? calculationsData.time_to_goal -4 : 0) }}</td>
+                                <td id="plan">{{ getProjectedDate(calculationsData.time_to_goal || 0) }}</td>
+                                <td id="plan">{{ getProjectedDate(calculationsData.time_to_goal ? calculationsData.time_to_goal + 12 : 0) }}</td>
+                            </tr>
+                            <tr>
+                                <td class="mon">Total Contributed</td>
+                                <td id="plan">${{ Number(calculationsData.total_contributed * 1.20 || 0).toLocaleString() }}</td>
+                                <td id="plan">${{ Number(calculationsData.total_contributed || 0).toLocaleString() }}</td>
+                                <td id="plan">${{ Number(calculationsData.total_contributed * 0.80 || 0).toLocaleString() }}</td>
+                            </tr>
+                            <tr>
+                                <td class="mon">Time to Goal</td>
+                                <td id="plan">{{ calculationsData.time_to_goal || 0 }} Months</td>
+                                <td id="plan">{{ calculationsData.time_to_goal || 0 }} Months</td>
+                                <td id="plan">{{ calculationsData.time_to_goal || 0 }} Months</td>
+                            </tr>
+                            <tr>
+                                <td class="mon">Progress at 36mo</td>
+                                <td><div class="Pro-container"><div class="Pro" :style="{ width: aggressiveProgress + '%' }"></div></div></td>
+                                <td><div class="Pro-container"><div class="Pro" :style="{ width: balancedProgress + '%' }"></div></div></td>
+                                <td><div class="Pro-container"><div class="Pro" :style="{ width: conservativeProgress + '%' }"></div></div></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="bottomRow" ref="tableRowRef">
+                <Transition name="fade" mode="out-in">
+                    <table class="botTable" v-if="isTableVisible && tables.length > 0">
+                        <thead>
+                            <tr>
+                                <th>Number</th>
+                                <th>Subscriptions</th>
+                                <th>Value</th>
+                                <th>Status</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <TransitionGroup name="list" tag="tbody" appear>
+                            <tr v-for="( item, index ) in tables" :key="item.id" :style="{ transitionDelay: `${index * 0.1}s` }">
+                                <td>{{ index + 1 }}</td>
+                                <td>{{ item.name }}</td>
+                                <td>{{ item.value }}</td>
+                                <td>{{ item.status }}</td>
+                                <td class="text-center">
+                                    <button class="delete-btn" @click="deleteSubscription(item.id)" title="Delete Subscription">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        </TransitionGroup>
+                    </table>
+                    <div v-else-if="isTableVisible && tables.length === 0" class="table-placeholder">
+                        <i class="fa-solid fa-wallet placeholder-icon"></i>
+                        <h4>Missing critical information</h4>
+                        <p>Please fill the required information in settings to track your subscriptions.</p>
+                    </div>
+                </Transition>
+            </div>
         </div>
     </div>
 </template>
@@ -225,6 +556,18 @@ onMounted(() => {
         from {
             opacity: 0;
             transform: translateX(-600px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateX(0px);
+        }
+    }
+
+    @keyframes SideEnterRight {
+        from {
+            opacity: 0;
+            transform: translateX(600px);
         }
 
         to {
@@ -288,16 +631,60 @@ onMounted(() => {
         flex-direction: column;
         width: 100%;
         min-height: 100vh;
-        transition: all 0.6s ease-in-out;
-        padding: 20px;
+        transition: all 0.1s ease;
         box-sizing: border-box;
         overflow-x: hidden;
     }
 
+    .titleContainer {
+        animation: SideEnter 1.9s ease-in-out;
+        transition: all 0.7s ease-in-out;
+    }
+
+    .titleContainer.shifted {
+        margin-left: 250px;
+        width: calc(100% - 100px);
+    }
+
     .main-container.Shifted {
-        /* margin-left: 19%;
-        width: 82%; */
-        padding-left: 20%;
+        padding-left: 20px;
+        max-width: 100%;
+    }
+
+    .main-container.Shifted .MiddleRow,
+    .main-container.Shifted .botTable,
+    .main-container.Shifted .horCard {
+        max-width: 100%;
+    }
+
+    .mainTitle {
+        font-family: DM Sans, sans-serif;
+        font-size: 6vw;
+        color: rgb(255, 255, 255);
+        letter-spacing: -0.04em;
+        line-height: .92;
+        font-weight: 700;
+        margin-bottom: -60px;
+        margin-left: 30px;
+    }
+    
+    .subTitle {
+        color: rgba(163, 163, 181, 1);
+        font-size: 6vw;
+        font-family: DM Sans, sans-serif;
+        letter-spacing: -.04em;
+        line-height: .92;
+        font-weight: 700;
+        margin-left: 30px;
+        
+    }
+
+    .titleDisc {
+        font-family: Manrope, sans-serif;
+        color: rgb(163, 163, 181);
+        line-height: 1.75rem;
+        font-size: 1.125rem;
+        margin-left: 30px;
     }
 
     .SideBar {
@@ -311,10 +698,12 @@ onMounted(() => {
         height: 97vh;
         margin-left: 10px;
         margin-top: 10px;
-        background: rgba(255, 255, 255, 0.15);
-        border-radius: 16px;
-        box-shadow: 0 4px 30px rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.025);
+        box-shadow: 0 4px 30px rgb(0, 0, 0, 0.1);
         backdrop-filter: blur(5px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 16px;
+        transition: all 1s ease-in-out;
         position: fixed;
         left: 0;
         top: 0;
@@ -331,8 +720,9 @@ onMounted(() => {
         z-index: -1;
     }
 
-    .a:hover {
+    .a[data-v-817427b0]:hover {
         color: #ffffff;
+        background: rgba(129, 140, 248, 0.1);
         text-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
     }
 
@@ -342,34 +732,125 @@ onMounted(() => {
         align-items: center;
         flex-direction: row;
         gap: 20px;
-        /* padding: 20px; */
         font-family: 'Plus Jakarta Sans', sans-serif;
         color: #ffffff;
-        transition: all 0.6s ease-in-out;
+        transition: all 0.7s ease-in-out;
         width: 100%;
         box-sizing: border-box;
         margin-bottom: 80px;
+        padding: 0px 13px 0px 13px;
     }
 
-    .Card1, .Card2, .Card3 {
+    .main-container.Shifted .hero{
+        transform: translateX(0); 
+        margin-left: 19%; 
+        width: 76vw;
+    }
+
+    .main-container.Shifted .horCard{
+        transform: translateX(0);
+        margin-left: 16%;
+        width: 74vw;
+    }
+
+    .Card1 {
+        display: flex;
+        flex: 1;
+        min-width: 0;
+        justify-content: space-evenly;
+        gap: 0px;
+        align-items: flex-start;
+        flex-direction: column;
+        background: rgba(255, 255, 255, 0.025);
+        border-radius: 16px;
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        height: 50vh;
+        overflow: hidden;
+        /* margin-top: 5px; */
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        transform: translateY(20px);
+        animation: SideEnter 2s ease-in-out forwards;
+        opacity: 0;
+        padding: 20px;
+    }
+
+    .Card1 h3 {
+        font-family: DM Sans, sans-serif;
+        color: rgb(255, 255, 255);
+        line-height: 1.25;
+        font-weight: 600;
+        font-size: 1.25rem;
+    }
+
+    .Card1 p {
+        font-family: Manrope, sans-serif;
+        margin-top: -30px;
+    }
+
+    .colGreen {
+        color: #00C853;
+        font-family: JetBrains Mono, monospace;
+        font-weight: 700;
+        font-size: 1.875rem;
+        line-height: 2.25rem;
+    }
+
+    .bor {
+        border-bottom: 1px solid rgba(163, 163, 181, .1);
+        padding-bottom: 12%;
+        line-height: 1.625;
+        font-family: Manrope, sans-serif;
+    }
+
+    .Mini {
+        font-size: .75rem;
+        line-height: 1rem;
+    }
+
+    .Card2 {
         display: flex;
         flex: 1;
         min-width: 0;
         justify-content: center;
         align-items: center;
         flex-direction: column;
-        background: rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.025);
         border-radius: 16px;
-        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-        backdrop-filter: blur(5px);
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0);
+        backdrop-filter: blur(10px);
         border: 1px solid rgba(255, 255, 255, 0.2);
-        height: 55vh;
+        height: 50vh;
         overflow: hidden;
         transition: transform 0.3s ease, box-shadow 0.3s ease;
         transform: translateY(20px);
         animation: fallIn 2s ease-in-out forwards;
         opacity: 0;
         padding: 20px;
+        margin-bottom: 41px;
+    }
+
+    .Card3 {
+        display: flex;
+        flex: 1;
+        min-width: 0;
+        align-items: flex-start;
+        flex-direction: column;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.025);
+        border-radius: 16px;
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(5px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        height: 50vh;
+        overflow: hidden;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        transform: translateY(20px);
+        animation: SideEnterRight 2s ease-in-out forwards;
+        opacity: 0;
+        padding: 20px;
+        gap: 5vh;
     }
 
     .Card1:hover, .Card2:hover, .Card3:hover {
@@ -382,11 +863,178 @@ onMounted(() => {
         width: 80%;
     }
 
+    .w-8 {
+        border-radius: 16px;
+        width: 25px;
+        height: 25px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .grid-transition-zone {
+        background: 
+            linear-gradient(to bottom, #111726 0%, rgba(30, 41, 59, 0.4) 30%, rgba(244, 245, 247, 0) 100%),
+            linear-gradient(rgba(15, 23, 42, 0.06) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(15, 23, 42, 0.06) 1px, transparent 1px),
+            #F4F5F7;
+            
+        background-size: 
+            100% 180px,
+            48px 48px,
+            48px 48px,
+            100% 100%;
+            
+        background-position: 
+            top left, 
+            top left, 
+            top left, 
+            top left;
+
+        background-repeat: no-repeat, repeat, repeat, no-repeat;
+        position: relative;
+        z-index: 1;
+        width: 100vw;
+        left: 50%;
+        right: 50%;
+        margin-left: -50vw;
+        margin-right: -50vw;
+        
+        margin-top: 50px; 
+        margin-bottom: 0px; 
+        padding: 100px 40px 80px 40px;
+        box-sizing: border-box; 
+        min-height: calc(100vh - 400px); 
+    }
+
+    .counter-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .currency-symbol {
+        font-size: 2rem;
+        font-weight: bold;
+        margin-right: 5px;
+        color: #00C853;
+    }
+    
+    .digit-slot {
+        height: 50px; 
+        width: 30px;
+        overflow: hidden; 
+        border-bottom: 2px solid rgba(129, 140, 248, 0.3); 
+    }
+
+    .digit-strip {
+        display: flex;
+        flex-direction: column;
+        transition: transform 2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .digit-strip span {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 50px; 
+        font-size: 2rem;
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: bold;
+        color: #ffffff;
+    }
+
+    .Pro-container {
+        display: flex;
+        align-items: flex-start;
+        width: 100%;
+        background-color: rgb(42 42 69 );
+        border-radius: 50px;
+        margin: 20px 0px;
+    }
+
+    .Pro {
+        height: 7px;
+        background-color: #00C853;
+        border-radius: inherit;
+        transition: width 0.4s ease-in-out;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 12px;
+        color: #00C853;
+        transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);   
+    }
+
     .chart-wrapper {
         width: 100%;
-        height: 250px; /* Replaces your 35vh img height */
+        height: 250px;
         margin-bottom: 20px;
         position: relative;
+    }
+
+    /* Graph Placeholder Styles */
+    /* .chart-wrapper {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    } */
+    
+    .graph-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        width: 100%;
+        height: 100%;
+        /* background: rgba(255, 255, 255, 0.02); */
+        /* border: 1px dashed rgba(255, 255, 255, 0.1); */
+        border-radius: 8px;
+        /* padding: 20px; */
+    }
+
+    /* Table Placeholder Styles */
+    .table-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 40px 20px;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px dashed rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        margin-top: 10px;
+    }
+
+    /* Typography & Icon styling for placeholders */
+    .placeholder-icon {
+        font-size: 1.8rem;
+        color: #818CF8; /* Accent purple */
+        margin-bottom: 12px;
+        opacity: 0.8;
+    }
+
+    .graph-placeholder p, 
+    .table-placeholder h4 {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #A3A3B5;
+        margin: 0 0 4px 0;
+    }
+
+    .graph-placeholder span, 
+    .table-placeholder p {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 0.8rem;
+        color: #A3A3B5; /* Subtitle muted gray */
+        margin: 0;
     }
 
     .Side {
@@ -399,26 +1047,78 @@ onMounted(() => {
         font-size: 1.5rem;
     }
 
-    .middle-card {
+    .horCardContainer {
         display: flex;
-        justify-content: center;
+        flex-direction: row;
+        justify-content: space-evenly;
         align-items: center;
-        flex-direction: column;
-        background: rgba(255, 255, 255, 0.15);
-        border-radius: 16px;
-        padding: 30px;
-        backdrop-filter: blur(5px);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        height: 60vh;
-        width: 100%;
+        margin-bottom: 50px;
+        animation: SideEnter 2s ease-in-out forwards;
+        transition: all 0.7s ease-in-out;
+        width: 100%; 
         box-sizing: border-box;
+        z-index: 100;
     }
 
-    .MiddleRow {
+    .horCard {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-evenly;
         width: 100%;
-        padding: 0;
+        background: rgba(255, 255, 255, 0.025);
+        border-radius: 16px;
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        margin-left: 12px;
+        margin-right: 12px;
+        animation: SideEnter 2s ease-in-out forwards;
+        transition: all 0.7s ease-in-out;
+    }
+
+    .totSave {
+        font-family: JetBrains Mono, monospace;
+        color: rgb(163, 163, 181);
+        margin-right: 20px;
+        margin-left: 20px;
+    }
+
+    .monthCont {
+        font-family: JetBrains Mono, monospace;
+        color: rgb(163, 163, 181);
+        margin-right: 20px;
+        margin-left: 3px;
+    }
+
+    .saveH2 {
+        color: #00C853;
+    }
+
+    .contH2 {
+        color: #00C853;
+    }
+    
+    .MiddleRow {
+        max-width: 1200px;
+        margin: 0 auto;    
+        width: 100%;
         box-sizing: border-box;
         opacity: 0;
+        transform: translateX(-50px);
+        transition: opacity 0.6s ease-in-out, transform 0.6s ease-in-out, max-width 1s ease-in-out, width 1s ease-in-out; 
+        display: flex;
+        flex-direction: column;
+        background: #ffffff; 
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05);
+    }
+
+    .animate-trigger {
+        opacity: 1;
+        transform: translateX(0);
     }
 
     .middle-chart-wrapper {
@@ -435,6 +1135,32 @@ onMounted(() => {
         width: 100%;
         box-sizing: border-box;
         min-height: 400px;
+        transition: width 0.1s ease-in-out;
+    }
+    
+    table.plan {
+        width: 100%;
+        max-width: 1200px; 
+        margin: 0 auto;
+        transition: max-width 2s ease-in-out, width 2s ease-in-out;
+    }
+    
+    .botTable {
+        width: 100%;
+        max-width: 1200px; 
+        margin: 0 auto;
+        transition: max-width 0.1s ease-in-out, width 0.1s ease-in-out;
+    }
+
+    .botTable tr {
+        transition: transform 0.1s cubic-bezier(0.25, 1, 0.5, 1), background-color 0.1s ease-in-out;
+        will-change: transform;
+    }
+
+    .botTable tr:hover {
+        background: rgba(26, 26, 46, 0.02);
+        transform: scale(1.006); 
+        cursor: pointer;
     }
 
     .bottom-container {
@@ -442,31 +1168,56 @@ onMounted(() => {
         flex-direction: column;
         width: 100%;
         min-height: 100vh;
-        transition: padding 0.6s ease-in-out; 
+        transition: padding 0.1s ease-in-out; 
         padding: 20px;
         box-sizing: border-box;
         overflow-x: hidden;
     }
 
-    .main-container.Shifted {
-        padding-left: calc(17% + 40px);
+    .main-container.Shifted .MiddleRow {
+        max-width: 1000px;
+        width: 65%;
     }
 
-    table {
+    .main-container.Shifted .botTable {
+        max-width: 1000px;
+        width: 67%;
+    }
+
+    .subject {
+        font-family: DM Sans, sans-serif;
+        font-weight: 600;
+        font-size: 1rem;
+        font-size: 1.5rem;
+    }
+
+    .money {
+        font-size: 3vw;
+        color: #F4F5F7;
+        font-family: JetBrains Mono, monospace;
+        font-weight: 700;
+        color: #00C853;
+    }
+
+    .target {
+        font-family: JetBrains Mono, monospace;
+        font-size: .75rem;
+        line-height: 1rem;
+    }
+
+    table.plan {
+        max-width: 1200px;
         width: 100%;
         border-collapse: collapse;
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(10px);
-        border-radius: 16px;
-        overflow: hidden;
-        color: #ffffff;
-        font-family: 'Plus Jakarta Sans', sans-serif;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-spacing: 0;
+        font-family: 'Plus Jakarta Sans', sans-serif; 
+        background: transparent;
     }
 
-    th {
-        background: rgba(129, 140, 248, 0.2);
-        color: #818CF8;
+    table.plan th {
+        background-color: rgba(244, 245, 247, 0.95); 
+        border-right: 1px solid rgba(26, 26, 46, 0.08);
+        color: #a3a3ae;
         text-align: left;
         padding: 16px;
         font-weight: 600;
@@ -476,101 +1227,299 @@ onMounted(() => {
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
 
-    td {
+    table.plan td {
         padding: 16px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        background: rgba(255, 255, 255, 1);
+        border-bottom: 1px solid rgba(26, 26, 46, 0.08);
         font-size: 0.95rem;
+        transition: all 0.3s ease;
+        color: #1A1A2E;
+        border-right: 1px solid rgba(26, 26, 46, 0.08);
     }
 
-    tr:not(.list-enter-active):not(.list-appear-active) {
-        transition: background-color 0.3s ease, transform 0.2s ease;
+    table.plan tr:last-child td:first-child {
+        border-bottom-left-radius: 16px;
+    }
+    table.plan tr:last-child td:last-child {
+        border-bottom-right-radius: 16px;
     }
 
-    tr:last-child td {
-        border-bottom: none;
+    .botTable {
+        width: 100%;
+        border-collapse: collapse;
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        border-radius: 16px;
+        overflow: hidden;
+        color: #ffffff;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        animation: 1s ease-in-out;
+        transition: 1s ease-in-out;
     }
 
-    tr:hover {
-        background: rgba(255, 255, 255, 0.08);
-        transform: scale(1.01);
+    .botTable th {
+        background: rgba(244, 245, 247, 0.95);
+        color: #a3a3ae;
+        text-align: left;
+        padding: 16px;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        letter-spacing: 0.05em;
+        border-left: 1px solid rgba(26, 26, 46, 0.08);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .botTable td {
+        padding: 16px;
+        background-color: rgba(255, 255, 255, 1);
+        color: #1A1A2E;
+        border-bottom: 1px solid rgba(26, 26, 46, 0.08);
+        border-right: 1px solid rgba(26, 26, 46, 0.08);
+        font-size: 0.95rem;
+        animation: 1s ease-in-out;
+        transition: 1s ease-in-out;
+    }
+
+    .botTable tr:last-child td:first-child {
+        border-bottom-left-radius: 16px;
+    }
+    .botTable tr:last-child td:last-child {
+        border-bottom-right-radius: 16px;
+    }
+
+    .botTable tr {
+        transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), 
+                    background-color 0.3s ease;
+        will-change: transform;
+    }
+
+    .botTable tr:hover {
+        background: rgba(26, 26, 46, 0.02);
+        transform: scale(1.012); 
         cursor: pointer;
     }
+    
+    .botTable td {
+        transition: background-color 0.3s ease;
+    }
 
+    .text-center {
+        text-align: center;
+    }
+    
+    .botTable .delete-btn {
+        background: transparent;
+        border: none;
+        color: #ff4d4d;
+        cursor: pointer;
+        padding: 6px 10px;
+        border-radius: 6px;
+        transition: all 0.2s ease;
+    }
+    
+    .botTable .delete-btn:hover {
+        background: rgba(255, 77, 77, 0.15);
+        color: #ff6666;
+        transform: scale(1.05);
+    }
+    
+    .Con .Met {
+        border-radius: 16px;
+    }
+    
+    .mon {
+        color: rgb(163, 163, 181, 1.2);
+    }
+    
+    #plan {
+        /* color: #ffffff; */
+        font-size: 0.95rem;
+    }
+    
+    #spe {
+        color: #00C853;
+    }
+    
     .Card1 { animation-delay: 0.1;}
     .Card2 { animation-delay: 0.1;}
     .Card3 { animation-delay: 0.1;}
     .animate-trigger { animation: SideEnter 1.5s ease-out forwards;}
-
+    
     @media (max-width: 768px) {
-        /* 1. Stack the Top Cards */
+        /* 1. Reset Typography Scale & Margins */
+        .mainTitle {
+            font-size: 2.5rem; /* Scaled up for readable mobile title */
+            margin-left: 15px;
+            margin-bottom: 5px; /* Fixed text overlapping */
+        }
+
+        .subTitle {
+            font-size: 2rem;
+            margin-left: 15px;
+            line-height: 1.1;
+        }
+
+        .titleDisc {
+            font-size: 0.95rem;
+            margin-left: 15px;
+            padding-right: 15px;
+        }
+
+        /* 2. Fix the Sidebar Layout Shift on Mobile */
+        .titleContainer.shifted,
+        .main-container.Shifted .hero,
+        .main-container.Shifted .horCard,
+        .main-container.Shifted .MiddleRow,
+        .main-container.Shifted .botTable {
+            margin-left: 0   ;
+            width: 100%   ;
+            transform: none   ;
+        }
+
+        /* 3. Stack Card layouts & Adjust Sizing */
         .hero {
             flex-direction: column;
             margin-bottom: 40px;
-            gap: 30px;
+            /* gap: 25px; */
+            padding: 0 15px;
         }
 
-        .Card1, .Card2, .Card3 {
-            width: 90%;
-            height: auto; /* Let height be determined by content */
-            min-height: 350px;
-            padding: 25px;
+        /* 4. Fix Horizontal Metric Rows */
+        .horCardContainer {
+            padding: 0 15px;
+            box-sizing: border-box;
         }
 
-        /* 2. Fix the Sidebar for Mobile */
+        .horCard {
+            flex-direction: column; /* Stack total saved and monthly contributed */
+            gap: 20px;
+            padding: 20px 0;
+            margin-left: 0;
+            margin-right: 0;
+        }
+
+        .totSave, .monthCont {
+            margin: 0;
+            text-align: center;
+        }
+
+        /* 5. Safe Viewport Escape for Grid Transition Zone */
+        .grid-transition-zone {
+            width: 100%;
+            left: 0;
+            right: 0;
+            margin-left: 0;
+            margin-right: 0;
+            padding: 60px 15px 40px 15px;
+        }
+
+        /* 6. Prevent Table/Row Grid Broken Widths */
+        .MiddleRow {
+            max-width: 100%   ;
+            width: 100%   ;
+            transform: none;
+            overflow-x: auto; /* Allow table scrolling inside container */
+        }
+
+        /* 7. Setup Table Swiping Fallback */
+        .bottomRow {
+            padding: 0;
+            overflow-x: auto; 
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .plan, .botTable {
+            min-width: 550px; /* Ensures text doesn't squish into columns illegibly */
+            width: 100%;
+        }
+
         .SideBar {
-            width: 70%; /* Wider on mobile for readability */
+            width: 75%; 
             height: 100vh;
             margin: 0;
             border-radius: 0 16px 16px 0;
-            backdrop-filter: blur(15px); /* Stronger blur for overlay */
+            backdrop-filter: blur(15px); 
+            -webkit-backdrop-filter: blur(15px);
         }
 
-        /* 3. Handle Content Shifting */
         .main-container {
-            padding-top: 60px; /* Room for the menu icon */
+            padding-top: 70px;
         }
 
+        /* Dim background cleanly when sidebar is open */
         .main-container.Shifted {
-            padding-left: 20px; /* Don't push content off-screen on mobile */
-            opacity: 0.3; /* Optional: dim content when menu is open */
-            filter: blur(2px);
-        }
-
-        /* 4. The Middle Card (Deep Dive) */
-        .middle-card {
-            height: auto;
-            padding: 20px;
-        }
-
-        .middle-chart-wrapper {
-            height: 300px; /* Slightly smaller for mobile screens */
-        }
-
-        /* 5. Responsive Table */
-        .bottomRow {
-            padding: 10px;
-            overflow-x: auto; /* Critical: allows table to swipe left/right */
-            display: block; /* Changes from flex to block for scrolling */
-        }
-
-        table {
-            min-width: 600px; /* Forces table to stay wide enough to read */
-            margin-bottom: 20px;
-            border-radius: 8px; /* Slightly smaller radius for mobile */
+            padding-left: 0; 
+            opacity: 0.2;
+            filter: blur(4px);
+            pointer-events: none; /* Block interactions while sidebar is active */
         }
 
         th, td {
-            padding: 12px 10px; /* Tighter padding for mobile screens */
+            padding: 12px 10px;
             font-size: 0.85rem;
         }
 
-        /* Adjust typography for smaller screens */
         h2 {
-            font-size: 1.25rem;
+            font-size: 1.35rem;
         }
 
         p {
             font-size: 0.85rem;
         }
-    }
+
+        .counter-row {
+            margin-bottom: 15px;
+            flex-wrap: nowrap;
+            justify-content: center;
+            }
+
+        /* Target the text block wrapper beneath the green slot matrix numbers */
+        .grid-transition-zone p, 
+        .grid-transition-zone span {
+            display: block;
+            margin-top: 10px   ;
+            line-height: 1.4;
+        }
+
+        /* 2. Fix the Total Saved / Monthly Contributed Stack Overlap (Image 3) */
+        .horCard {
+            padding: 30px 15px   ; /* Give content room to breathe */
+            gap: 35px   ;          /* Increase space between the two blocks */
+        }
+
+        .totSave, .monthCont {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Ensure label titles stay distinct from the underlining digit lines */
+        .totSave h2, .monthCont h2 {
+            margin-bottom: 15px   ;
+        }
+
+        .Card1, .Card2, .Card3 {
+            width: 90%;
+            height: 100%;
+        }
+
+        .Card1 p {
+            padding-top: 20px;
+        }
+
+        .Card1 h2 {
+            padding-bottom: 10px;
+        }
+
+        .chart-wrapper, .middle-chart-wrapper {
+            height: 260px   ;
+            width: 100%   ;
+        }
+}   
 </style>
