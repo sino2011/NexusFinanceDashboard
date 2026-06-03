@@ -869,4 +869,183 @@
 
     .animate-trigger { animation: SideEnter 1.9s ease-in-out forwards;}
     .animate-trigger2 { animation: fallIn 1.55s ease-in-out forwards;}
+
+    @media screen and (max-width: 1024px) {
+    .topRow {
+        width: 85%;
+        padding: 40px 20px;
+        min-height: auto;
+    }
+
+    .feat {
+        grid-template-columns: 1fr;
+        grid-auto-flow: row;
+        grid-template-rows: auto;
+        gap: 15px;
+    }
+
+    .countersContainer {
+        height: auto;
+        padding-top: 4rem;
+        padding-bottom: 4rem;
+    }
+
+    .counters {
+        grid-template-columns: repeat(2, 1fr) !important;
+        padding-top: 14rem;
+        padding-left: 20px;
+        padding-right: 20px;
+    }
+
+    .counters .salaryCard:nth-child(1),
+    .counters .salaryCard:nth-child(2),
+    .counters .salaryCard:nth-child(3),
+    .counters .salaryCard:nth-child(4),
+    .counters .salaryCard:nth-child(5) {
+        grid-column: span 2 !important;
+    }
+
+    .cardsContainer {
+        flex-direction: column;
+        align-items: center;
+        padding: 0 20px;
+    }
+
+    .revCard1, .revCard2, .revCard3 {
+        width: 100%;
+        height: auto;
+        margin: 15px 0;
+    }
+
+    .botCard {
+        gap: 0;
+        width: 100%;
+        padding: 15px 10px;
+        box-sizing: border-box;
+    }
+}
+
+/* Mobile Devices (Max-width: 768px) */
+@media screen and (max-width: 768px) {
+    .topRow {
+        width: 92%;
+        gap: 25px;
+    }
+
+    .countersContainer h2,
+    .reviews h1,
+    .reviews h2 {
+        font-size: 1.8rem;
+        margin-left: 15px;
+    }
+
+    .adj {
+        margin-bottom: -200px;
+        font-size: 1rem;
+    }
+
+    .form-content {
+        gap: 15px;
+    }
+
+    .para {
+        gap: 38px;
+    }
+
+    .para label {
+        font-size: 11px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+    }
+
+    .inputs {
+        gap: 16px;
+        margin-left: 10px;
+    }
+
+    .inputs input {
+        height: 20px;
+        padding: 5px 12px;
+        font-size: 13px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .counters {
+        grid-template-columns: 1fr !important;
+        padding-top: 15rem;
+    }
+
+    .counters .salaryCard:nth-child(1),
+    .counters .salaryCard:nth-child(2),
+    .counters .salaryCard:nth-child(3),
+    .counters .salaryCard:nth-child(4),
+    .counters .salaryCard:nth-child(5) {
+        grid-column: span 1 !important;
+    }
+
+    .salaryCard {
+        height: auto;
+        padding: 15px 0;
+    }
+
+    .mid input {
+        width: 80%;
+    }
+
+    .bot {
+        flex-wrap: wrap;
+        justify-content: center;
+        text-align: center;
+        gap: 5px 15px;
+        padding: 0 10px;
+    }
+
+    /* Disable extreme horizontal animations on mobile to avoid layout clipping layout breaks */
+    @keyframes SideEnter {
+        from { opacity: 0; transform: translateY(50px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+}
+
+/* Tiny Screens (Max-width: 480px) */
+@media screen and (max-width: 480px) {
+    .form-content {
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+        padding: 0 15px;
+        box-sizing: border-box;
+    }
+
+    .para {
+        flex-direction: row;
+        flex-wrap: wrap;
+        display: none; /* Simplifies layout on modern compact form patterns */
+    }
+
+    /* Converts form fields to stack neatly vertically */
+    form {
+        width: 100%;
+    }
+
+    .inputs {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .inputs input {
+        width: 100%;
+    }
+    
+    /* Dynamic placeholders act as labels if standard block layout collapses */
+    .inputs input::placeholder {
+        color: rgba(163, 163, 181, 0.7);
+    }
+
+    .finishContainer {
+        margin-top: 40px;
+    }
+}
 </style>
