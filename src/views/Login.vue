@@ -17,7 +17,11 @@ const submitData = async () => {
       "https://yassinafify.pythonanywhere.com/login",
       data.value,
     );
-    if (response.data?.message === "Login successful") {
+    // Modified to look for the message string or the presence of a token
+    if (response.data?.message === "Login successful" || response.data?.token) {
+      // SAVE TOKEN TO STORAGE FOR PROTECTED VIEWS
+      localStorage.setItem("token", response.data.token);
+
       router.push({ name: "Home" });
     } else {
       error.value = response.data?.error || "Login failed";
