@@ -55,16 +55,19 @@ const router = createRouter({
   },
 });
 
-// router.beforeEach((to, from, next)=> {
-//   const hasAccount = localStorage.getItem('nexus_user_registered')
+router.beforeEach((to, from, next) => {
+  const hasAccount = localStorage.getItem("nexus_user_registered");
 
-//   if (to.name === 'Signup' && hasAccount){
-//     next('/Home')
-//   }else if(to.matched.some(record => record.meta.requiresAccount) && !hasAccount){
-//     next('/')
-//   }else {
-//     next();
-//   }
-// });
+  if (to.name === "Signup" && hasAccount) {
+    next("/Home");
+  } else if (
+    to.matched.some((record) => record.meta.requiresAccount) &&
+    !hasAccount
+  ) {
+    next("/");
+  } else {
+    next();
+  }
+});
 
 export default router;
