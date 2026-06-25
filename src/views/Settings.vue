@@ -1,7 +1,7 @@
 <script setup>
 import { RouterLink } from "vue-router";
 import { ref } from "vue";
-import axios from "vue-router";
+import axios from "axios"; //  Fixed this import to pull from axios
 
 const isVisible = ref(false);
 const income1 = ref(500);
@@ -41,7 +41,6 @@ function toggleSiderbar() {
 
 const sendData = async () => {
   try {
-    // Attached auth header as the third parameter for POST requests
     const response = await axios.post(
       "https://yassinafify.pythonanywhere.com/settings",
       extraData.value,
