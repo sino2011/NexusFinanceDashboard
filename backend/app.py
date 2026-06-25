@@ -15,7 +15,19 @@ DB_PASSWORD = os.getenv('DB_PASSWORD', 'Yassin2011')
 DB_NAME = os.getenv('DB_NAME', 'nexusfinancedashboard')
 
 app = Flask(__name__)
-CORS(app, origins=["*"])
+CORS(
+    app, 
+    resources={r"/*": {"origins": ["https://sino2011.github.io", "http://localhost:5173"]}},
+    allow_headers=["Content-Type", "Authorization"],
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    supports_credentials=True
+)
+
+# @app.before_request
+# def handle_preflight():
+#     if request.method == "OPTIONS":
+#         response = app.make_default_options_response()
+#         return response
 
 # JWT Configuration
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "super-secret-change-this-in-production")
