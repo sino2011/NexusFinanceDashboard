@@ -27,9 +27,41 @@ db_config = {
 def get_db_connection():
     return pymysql.connect(**db_config)
 
+@app.route("/login", methods=["POST"])
+def login():
+    connection = None
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        password = data.get("password")
+        if not email or not password:
+            return jsonify({"error": "Email and password required"}), 400
+
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            sql = """SELECT id, pass FROM userinfo WHERE email = %s"""
+            cursor.execute(sql, (email,))
+            user = cursor.fetchone()
+
+            if user and user['pass'] == password:
+                return jsonify({
+                    "message": "Login successful",
+                    "user_id": user['id']
+                }), 200
+
+            return jsonify({"error": "Invalid email or password"}), 401
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        print(f"Login failed: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if connection:
+            connection.close()
+
 @app.route("/api/calculate", methods=['POST'])
 def save_calculations():
-    data = request.json
+    data = request.get_json()
 
     if not data:
         return jsonify({"error": "Missing request body"}), 400
@@ -185,7 +217,7 @@ def fetch_info():
     
 @app.route("/settings", methods=["POST"])
 def extra_data():
-    data = request.json or {}
+    data = request.get_json() or {}
 
     def clean(key, is_numeric=False):
         val = data.get(key)
