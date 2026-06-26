@@ -51,7 +51,7 @@ const tables = ref([]);
 
 // Helper function to dynamically add authorization headers
 const getAuthHeaders = () => {
-  const token = localStorage.getItem("token");
+  let token = localStorage.getItem("token");
   if (!token) {
     console.warn("No token found in localStorage!");
     return {};
