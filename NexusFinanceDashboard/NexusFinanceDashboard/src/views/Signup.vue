@@ -47,6 +47,9 @@ const submitData = async () => {
     const response = await axios.post(
       "https://yassinafify.pythonanywhere.com/api/calculate",
       formData.value,
+      {
+        withCredentials: true,
+      },
     );
     statusMessage.value = response.data.message;
 
