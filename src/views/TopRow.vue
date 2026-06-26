@@ -185,17 +185,38 @@ const fetchHomeData = async () => {
 
 const fetchSubscriptions = async () => {
   try {
-    // Added Auth Headers
     const response = await axios.get(
       "https://yassinafify.pythonanywhere.com/api/subscriptions",
       getAuthHeaders(),
     );
-    tables.value = response.data.map((item) => ({
-      id: item.id,
-      name: item.subscription_name,
-      value: `${item.subscription_price}$`,
-      status: item.subscriptions_status || "Pending",
-    }));
+
+    // Log this directly to the console so you can inspect the exact key names returned by the DB
+    console.log("Subscriptions raw response payload:", response.data);
+
+    if (!Array.isArray(response.data)) {
+      console.error("Expected array but received:", response.data);
+      tables.value = [];
+      return;
+    }
+
+    tables.value = response.data.map((item) => {
+      // Safely access properties whether the DB column has an 's' or not
+      const price =
+        item.subscription_price !== undefined &&
+        item.subscription_price !== null
+          ? item.subscription_price
+          : 0;
+
+      const statusValue =
+        item.subscriptions_status || item.subscription_status || "Pending";
+
+      return {
+        id: item.id,
+        name: item.subscription_name || "Unknown Subscription",
+        value: `${price}$`,
+        status: statusValue,
+      };
+    });
   } catch (error) {
     console.error("Error connecting with backend subscription pipeline", error);
   }
