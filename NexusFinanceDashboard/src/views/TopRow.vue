@@ -131,44 +131,29 @@ const fetchHomeData = async () => {
     if (response.data && response.data.profile) {
       calculationsData.value = response.data.profile;
     }
-    const baseSavings = response.data.base_savings || 0;
-    const history = response.data.savings_history || [];
-    const debtHistory = response.data.debt || [];
 
-    const totalContributions = history.reduce((sum, val) => sum + val, 0);
-    const backendChartData = response.data.monthly_averages_chart || [];
-
-    const currentMonthlyContributed =
-      history.length > 0 ? history[history.length - 1] : 0;
-    const currentDebtContributions =
-      debtHistory.length > 0 ? debtHistory[debtHistory.length - 1] : 0;
-
+    // Direct data assignment from new backend keys
     homeMetrics.value = {
-      total_savings: baseSavings + totalContributions,
-      monthly_contributed: currentMonthlyContributed,
-      debt_contributions: currentDebtContributions,
+      total_savings: response.data.total_calculated_savings ?? 0,
+      monthly_contributed: response.data.current_monthly ?? 0,
+      debt_contributions: response.data.current_debt ?? 0,
     };
 
     const targetGoal = 10000;
-    const calculationPrecentage = (currentDebtContributions / targetGoal) * 100;
-    Home.value = Math.min(calculationPrecentage, 100);
+    const calculationPercentage =
+      (homeMetrics.value.debt_contributions / targetGoal) * 100;
+    Home.value = Math.min(calculationPercentage, 100);
 
+    const backendChartData = response.data.monthly_averages_chart || [];
     if (backendChartData.length > 0) {
       chartData2.value = {
         labels: [...chartData2.value.labels],
-        datasets: [
-          {
-            ...chartData2.value.datasets[0],
-            data: backendChartData,
-          },
-        ],
+        datasets: [{ ...chartData2.value.datasets[0], data: backendChartData }],
       };
-
       const activeMonths = backendChartData.filter((val) => val !== 0);
       const totalSum = activeMonths.reduce((a, b) => a + b, 0);
       const finalAverage =
         activeMonths.length > 0 ? totalSum / activeMonths.length : 0;
-
       overallAverageLabel.value = `$${finalAverage.toFixed(2)}`;
     }
 

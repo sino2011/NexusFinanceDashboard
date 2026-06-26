@@ -18,11 +18,11 @@ const targetElement = ref(null);
 const users = ref([]);
 const loading = ref(true);
 const formData = ref({
-  first_name: null,
-  last_name: null,
-  date_birth: null,
-  passw: null,
-  mail: null,
+  first_name: "",
+  last_name: "",
+  date_birth: "",
+  passw: "",
+  mail: "",
   annual_income: 20000,
   savings_target: 20000,
   timeline: 12,
@@ -53,9 +53,15 @@ const submitData = async () => {
     );
     statusMessage.value = response.data.message;
 
+    // --- FIX IS HERE: Save the token received from the backend ---
+    if (response.data && response.data.token) {
+      localStorage.setItem("token", response.data.token);
+    }
+
     localStorage.setItem("nexus_user_registered", "true");
     router.push("/Home");
 
+    // Reset form fields
     formData.value = {
       first_name: "",
       last_name: "",

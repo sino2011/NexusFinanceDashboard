@@ -5,6 +5,9 @@ import { onMounted } from "vue";
 
 const isVisible = ref(false);
 const transactions = ref([]);
+const API_BASE = import.meta.env.PROD
+  ? "https://yassinafify.pythonanywhere.com"
+  : "";
 
 // Secure headers helper
 const getAuthHeaders = () => {
@@ -16,7 +19,7 @@ const getData = async () => {
   try {
     // Attached auth header
     const response = await axios.get(
-      "https://yassinafify.pythonanywhere.com/Transactions",
+      `${API_BASE}/Transactions`,
       getAuthHeaders(),
     );
 
@@ -47,7 +50,7 @@ const deleteTransaction = async (id) => {
   try {
     // Attached auth header
     const response = await axios.delete(
-      `https://yassinafify.pythonanywhere.com/Transactions/${id}`,
+      `${API_BASE}/Transactions/${id}`,
       getAuthHeaders(),
     );
     if (response.status === 200) {

@@ -31,8 +31,46 @@ const formData = ref({
 });
 
 const statusMessage = ref("");
+const isSubmitting = ref(false);
+
+const PLAN_CACHE_KEY = "nexus_plan_profile";
+
+const syncFinancialFields = () => {
+  formData.value.annual_income = income1.value;
+  formData.value.savings_target = income2.value;
+  formData.value.timeline = timeline.value;
+  formData.value.total_savings = income3.value;
+  formData.value.emergency_fund = income4.value;
+};
+
+const cachePlanProfile = (profile, baseSavings = 0) => {
+  if (profile?.savings_target) {
+    sessionStorage.setItem(
+      PLAN_CACHE_KEY,
+      JSON.stringify({ profile, base_savings: baseSavings }),
+    );
+  }
+};
+
+const buildSignupPayload = () => {
+  syncFinancialFields();
+  return {
+    first_name: formData.value.first_name,
+    last_name: formData.value.last_name,
+    date_birth: formData.value.date_birth || null,
+    passw: formData.value.passw,
+    mail: formData.value.mail,
+    annual_income: Number(income1.value),
+    savings_target: Number(income2.value),
+    timeline: Number(timeline.value),
+    total_savings: Number(income3.value),
+    emergency_fund: Number(income4.value),
+  };
+};
 
 const submitData = async () => {
+  if (isSubmitting.value) return;
+
   if (
     !formData.value.first_name ||
     !formData.value.last_name ||
@@ -42,16 +80,33 @@ const submitData = async () => {
     statusMessage.value = "Please fill out all required fields.";
     return;
   }
-  statusMessage.value = "Savings data...";
+
+  isSubmitting.value = true;
+  statusMessage.value = "Saving your plan...";
   try {
+    const payload = buildSignupPayload();
     const response = await axios.post(
       "https://yassinafify.pythonanywhere.com/api/calculate",
-      formData.value,
+      payload,
       {
         withCredentials: true,
       },
     );
     statusMessage.value = response.data.message;
+
+    if (!response.data?.token) {
+      statusMessage.value = "Account created but login token missing. Please log in.";
+      return;
+    }
+
+    localStorage.setItem("token", response.data.token);
+    if (response.data.user_id) {
+      localStorage.setItem("user_id", String(response.data.user_id));
+    }
+
+    if (response.data.profile) {
+      cachePlanProfile(response.data.profile, response.data.base_savings ?? 0);
+    }
 
     localStorage.setItem("nexus_user_registered", "true");
     router.push("/Home");
@@ -70,12 +125,12 @@ const submitData = async () => {
     };
   } catch (error) {
     console.error("Error saving data:", error);
-    statusMessage.value = "Failed to save data. Check backend logs.";
-    if (error.response && error.response.data && error.response.data.message) {
-      statusMessage.value = error.response.data.message;
-    } else {
-      statusMessage.value = "An unexpected error occurred. Please try again.";
-    }
+    statusMessage.value =
+      error.response?.data?.error ||
+      error.response?.data?.message ||
+      "Failed to save data. Check backend logs.";
+  } finally {
+    isSubmitting.value = false;
   }
 };
 
@@ -105,6 +160,8 @@ const toggleTheme = () => {
 };
 
 onMounted(() => {
+  syncFinancialFields();
+
   // A single observer options configuration that covers both cases nicely
   const observerOptions = {
     threshold: [0.5, 0.3], // Listens for both 50% and 100% visibility thresholds
@@ -430,6 +487,15 @@ onMounted(() => {
             </div>
           </div>
         </div>
+        <div class="finishContainer">
+          <button
+            type="submit"
+            class="finish"
+            :disabled="isSubmitting"
+          >
+            {{ isSubmitting ? "Saving..." : "Sign Up !" }}
+          </button>
+        </div>
       </form>
     </div>
     <div class="reviews">
@@ -505,11 +571,6 @@ onMounted(() => {
             </div>
           </div>
         </div>
-      </div>
-      <div class="finishContainer">
-        <button @click="submitData" type="submit" class="finish">
-          Sign Up !
-        </button>
       </div>
     </div>
   </div>

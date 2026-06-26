@@ -1,5 +1,6 @@
 import os
 from datetime import date
+from datetime import datetime
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -9,7 +10,6 @@ from dateutil.relativedelta import relativedelta
 
 load_dotenv()
 
-# Fixed trailing typo 'a' at the end
 DB_HOST = os.getenv('DB_HOST', 'localhost')
 DB_USER = os.getenv('DB_USER', 'root')
 DB_PASSWORD = os.getenv('DB_PASSWORD', 'Yassin2011')
@@ -17,7 +17,6 @@ DB_NAME = os.getenv('DB_NAME', 'nexusfinancedashboard')
 
 app = Flask(__name__)
 
-# Core CORS setup (handles preflights automatically)
 CORS(
     app,
     resources={r"/*": {"origins": ["https://sino2011.github.io", "http://localhost:5173"]}},
@@ -28,6 +27,7 @@ CORS(
 
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "yassin2011")
 jwt = JWTManager(app)
+
 db_config = {
     'host': DB_HOST,
     'user': DB_USER,
@@ -39,13 +39,91 @@ db_config = {
 def get_db_connection():
     return pymysql.connect(**db_config)
 
+def get_request_data():
+    if request.is_json:
+        return request.get_json(silent=True) or {}
+    form_data = request.form.to_dict()
+    if form_data:
+        return form_data
+    try:
+        return request.get_json(silent=True) or {}
+    except Exception:
+        return {}
+
+def parse_user_id(identity):
+    try:
+        return int(identity)
+    except (ValueError, TypeError):
+        return None
+
+def to_float(val, default=0.0):
+    try:
+        if val is None or str(val).strip() == "":
+            return default
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+def to_int(val, default=0):
+    try:
+        if val is None or str(val).strip() == "":
+            return default
+        return int(float(val))
+    except (ValueError, TypeError):
+        return default
+
+def build_profile_from_calc(calc_result):
+    if not calc_result:
+        return {
+            "monthly_savings": 0,
+            "savings_rate": 0,
+            "balance_36mo": 0,
+            "completion_date": str(date.today()),
+            "total_contributed": 0,
+            "time_to_goal": 12,
+            "savings_target": 0,
+        }
+
+    savings_target = to_float(calc_result.get("savings_target"))
+    timeline = to_int(calc_result.get("timeline"), 12)
+    if timeline <= 0:
+        timeline = 12
+
+    annual_income = to_float(calc_result.get("annual_income"), 1)
+    if annual_income <= 0:
+        annual_income = 1
+
+    monthly_savings = savings_target / timeline
+    savings_rate = (monthly_savings / (annual_income / 12)) * 100
+    balance_36mo = monthly_savings * 36
+    completion_date = calc_result.get("completion_date")
+    
+    if completion_date:
+        if isinstance(completion_date, (date, datetime)):
+            completion_date = str(completion_date)
+        else:
+            completion_date = str(completion_date)
+    else:
+        completion_date = str(date.today() + relativedelta(months=timeline))
+
+    return {
+        "monthly_savings": round(monthly_savings, 2),
+        "savings_rate": round(savings_rate, 1),
+        "balance_36mo": round(balance_36mo, 2),
+        "completion_date": completion_date,
+        "total_contributed": round(max(0.0, annual_income - savings_target), 2),
+        "time_to_goal": timeline,
+        "savings_target": savings_target,
+    }
+
 @app.route("/login", methods=["POST"])
 def login():
     connection = None
     try:
-        data = request.get_json()
-        email = data.get('email')
-        password = data.get("password")
+        data = get_request_data()
+        email = data.get("email") or data.get("mail")
+        password = data.get("password") or data.get("passw") or data.get("pass")
+        
         if not email or not password:
             return jsonify({"error": "Email and password required"}), 400
 
@@ -57,10 +135,26 @@ def login():
 
             if user and user['pass'] == password:
                 access_token = create_access_token(identity=str(user['id']))
+                
+                cursor.execute("""
+                    SELECT annual_income, savings_target, timeline, total_savings,
+                           emergency_fund, completion_date
+                    FROM calculation_table
+                    WHERE user_id = %s
+                    ORDER BY id DESC
+                    LIMIT 1
+                """, (user["id"],))
+                calc_result = cursor.fetchone()
+                
+                profile = build_profile_from_calc(calc_result)
+                base_savings = to_float(calc_result.get("total_savings")) if calc_result else 0.0
+
                 return jsonify({
                     "message": "Login successful",
                     "token": access_token,
-                    "user_id": user['id']
+                    "user_id": user['id'],
+                    "profile": profile,
+                    "base_savings": base_savings,
                 }), 200
 
             return jsonify({"error": "Invalid email or password"}), 401
@@ -75,20 +169,32 @@ def login():
 
 @app.route("/api/calculate", methods=['POST'])
 def save_calculations():
-    data = request.get_json()
+    data = get_request_data()
     if not data:
         return jsonify({"error": "Missing request body"}), 400
 
-    annual_income = data.get('annual_income')
-    savings_target = data.get('savings_target')
-    timeline = int(data.get('timeline') or 0)
-    total_savings = data.get('total_savings')
-    emergency_fund = data.get('emergency_fund')
     first_name = data.get('first_name')
     last_name = data.get('last_name')
     date_birth = data.get('date_birth')
-    passw = data.get('passw')
-    email = data.get('mail')
+    passw = data.get('passw') or data.get('password')
+    email = data.get('mail') or data.get('email')
+
+    if not first_name or not last_name or not email or not passw:
+        return jsonify({"error": "First name, last name, email, and password are required"}), 400
+
+    if not date_birth or str(date_birth).strip() == "":
+        date_birth = None
+
+    annual_income = to_float(data.get('annual_income'))
+    savings_target = to_float(data.get('savings_target'))
+    timeline = to_int(data.get('timeline'), 12)
+    total_savings = to_float(data.get('total_savings'))
+    emergency_fund = to_float(data.get('emergency_fund'))
+
+    if timeline <= 0:
+        timeline = 12
+    if annual_income <= 0 or savings_target <= 0:
+        return jsonify({"error": "Annual income and savings target must be greater than zero"}), 400
 
     calculated_completion = date.today() + relativedelta(months=timeline)
     connection = get_db_connection()
@@ -109,16 +215,30 @@ def save_calculations():
 
         connection.commit()
         access_token = create_access_token(identity=str(user_id))
+        
+        calc_row = {
+            "annual_income": annual_income,
+            "savings_target": savings_target,
+            "timeline": timeline,
+            "total_savings": total_savings,
+            "emergency_fund": emergency_fund,
+            "completion_date": calculated_completion,
+        }
+        profile = build_profile_from_calc(calc_row)
 
         return jsonify({
             "message": "Profile and Calculation saved successfully",
             "token": access_token,
-            "user_id": user_id
+            "user_id": user_id,
+            "profile": profile,
+            "base_savings": total_savings,
         }), 201
 
+    except pymysql.err.IntegrityError:
+        connection.rollback()
+        return jsonify({"error": "Email already registered. Please login instead."}), 409
     except Exception as e:
         connection.rollback()
-        print(f"Database insertion failed: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
         connection.close()
@@ -126,10 +246,8 @@ def save_calculations():
 @app.route("/home", methods=['GET'])
 @jwt_required()
 def fetch_info():
-    user_id = get_jwt_identity()
-    try:
-        user_id = int(user_id)
-    except (ValueError, TypeError):
+    user_id = parse_user_id(get_jwt_identity())
+    if user_id is None:
         return jsonify({"error": "Invalid token identity structure"}), 400
 
     connection = get_db_connection()
@@ -143,10 +261,7 @@ def fetch_info():
 
             cursor.execute("SELECT SUM(subscription_price) as total_subs FROM subscription_ledger WHERE user_id = %s", (user_id,))
             sub_result = cursor.fetchone()
-
-            total_subscription = 0.0
-            if sub_result and sub_result.get('total_subs') is not None:
-                total_subscription = float(sub_result['total_subs'])
+            total_subscription = float(sub_result['total_subs']) if sub_result and sub_result.get('total_subs') is not None else 0.0
 
             cursor.execute("""
                     SELECT DATE_FORMAT(transaction_date, '%M') as month_name, SUM(transaction_value) as total_spent
@@ -157,78 +272,44 @@ def fetch_info():
             """, (user_id,))
             expense_results = cursor.fetchall() or []
 
-            if not calc_result:
-                return jsonify({
-                    "profile": {
-                        "monthly_savings": 0, "savings_rate": 0, "balance_36mo": 0,
-                        "completion_date": str(date.today()), "total_contributed": 0,
-                        "time_to_goal": 12, "savings_target": 1000
-                    },
-                    "base_savings": 0, "savings_history": [], "debt": [], "monthly_averages_chart": [0] * 12
-                }), 200
+            profile = build_profile_from_calc(calc_result)
+            base_savings = to_float(calc_result.get("total_savings")) if calc_result else 0.0
 
-            base_savings = float(calc_result.get('total_savings') or 0)
-            savings_target = float(calc_result.get('savings_target') or 0)
-
-            timeline = int(calc_result.get('timeline') or 12)
-            if timeline <= 0:
-                timeline = 12
-
-            annual_income = float(calc_result.get('annual_income') or 1)
-            if annual_income <= 0:
-                annual_income = 1
-
-            monthly_savings = savings_target / timeline
-            savings_rate = (monthly_savings / (annual_income / 12)) * 100
-            balance_36mo = monthly_savings * 36
-            completion_date = str(calc_result.get('completion_date')) if calc_result.get('completion_date') else str(date.today() + relativedelta(months=timeline))
-            total_contributed = max(0.0, annual_income - savings_target)
-            timetogoal = timeline
-
+            # Dynamic assignment fallback for total savings when extradata history is blank
             history = [int(float(row.get('monthly_contributed') or 0)) for row in extra_results]
             debt_history = [int(float(row.get('debt_contributions') or 0)) for row in extra_results]
 
-            months_labels = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-            monthly_averages_chart = [0.0] * 12
+            current_monthly = history[-1] if history else 0
+            current_debt = debt_history[-1] if debt_history else 0
+            total_contributions = sum(history)
 
-            expenses_by_month = {}
-            for row in expense_results:
-                if row and row.get('month_name'):
-                    m_name = str(row['month_name']).strip()
-                    expenses_by_month[m_name] = float(row.get('total_spent') or 0)
+            # CRITICAL FALLBACK: If fresh signup, show their total savings input here
+            calculated_total_savings = base_savings + total_contributions if extra_results else base_savings
+
+            monthly_averages_chart = [0.0] * 12
+            months_labels = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+            expenses_by_month = {str(row['month_name']).strip(): float(row.get('total_spent') or 0) for row in expense_results if row.get('month_name')}
 
             for index, row in enumerate(extra_results):
-                if index >= 12:
-                    break
-
-                m_cont = float(row.get('monthly_contributed') if row.get('monthly_contributed') is not None else 0)
-                d_cont = float(row.get('debt_contributions') if row.get('debt_contributions') is not None else 0)
-                e_cont = float(row.get('emergency_contribtuions') if row.get('emergency_contribtuions') is not None else 0)
-
+                if index >= 12: break
+                m_cont = float(row.get('monthly_contributed') or 0)
+                d_cont = float(row.get('debt_contributions') or 0)
+                e_cont = float(row.get('emergency_contribtuions') or 0)
                 gross_pool = m_cont + d_cont + e_cont
-                current_month_name = months_labels[index]
-                var_expense = float(expenses_by_month.get(current_month_name, 0.0))
-
-                net_surplus = gross_pool - (var_expense + total_subscription)
+                net_surplus = gross_pool - (float(expenses_by_month.get(months_labels[index], 0.0)) + total_subscription)
                 monthly_averages_chart[index] = round(net_surplus, 2)
 
             return jsonify({
-                "profile": {
-                    "monthly_savings": round(monthly_savings, 2),
-                    "savings_rate": round(savings_rate, 1),
-                    "balance_36mo": round(balance_36mo, 2),
-                    "completion_date": completion_date,
-                    "total_contributed": round(total_contributed, 2),
-                    "time_to_goal": timetogoal,
-                    "savings_target": savings_target
-                },
+                "profile": profile,
                 "base_savings": base_savings,
+                "total_calculated_savings": calculated_total_savings,
                 "savings_history": history,
                 "debt": debt_history,
+                "current_monthly": current_monthly,
+                "current_debt": current_debt,
                 "monthly_averages_chart": monthly_averages_chart
             }), 200
     except Exception as e:
-        print(f"CRITICAL ERROR compile home payload: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
         connection.close()
@@ -236,8 +317,10 @@ def fetch_info():
 @app.route("/settings", methods=["POST"])
 @jwt_required()
 def extra_data():
-    user_id = get_jwt_identity()
-    data = request.get_json() or {}
+    user_id = parse_user_id(get_jwt_identity())
+    if user_id is None:
+        return jsonify({"error": "Invalid token identity structure"}), 400
+    data = get_request_data()
 
     def clean(key, is_numeric=False):
         val = data.get(key)

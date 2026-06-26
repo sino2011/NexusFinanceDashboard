@@ -60,23 +60,27 @@ const financialMetrics = ref({
   },
 });
 
+// Secure headers helper
+const getAuthHeaders = () => {
+  const token = localStorage.getItem("token");
+  return { headers: { Authorization: token ? `Bearer ${token}` : "" } };
+};
+
 function toggleSiderbar() {
   isVisible.value = !isVisible.value;
 }
 
 const getData = async () => {
   try {
+    // Attached auth header
     const response = await axios.get(
       "https://yassinafify.pythonanywhere.com/Reports",
+      getAuthHeaders(),
     );
 
-    // Log this so you can see exactly what the backend is sending in your browser console!
     console.log("Flask payload received:", response.data);
-
     financialMetrics.value = response.data;
 
-    // Safe assignment using optional chaining (?.)
-    // If response.data.deep_dive doesn't exist, it falls back to your local mock array instead of crashing.
     MidlleRowGraph.value.datasets[0].data =
       response.data?.deep_dive?.fixed_costs ||
       financialMetrics.value.deep_dive.fixed_costs;
@@ -85,21 +89,18 @@ const getData = async () => {
       response.data?.deep_dive?.variable_costs ||
       financialMetrics.value.deep_dive.variable_costs;
 
-    // Trigger chart reactivity refresh
     MidlleRowGraph.value = { ...MidlleRowGraph.value };
   } catch (error) {
     console.error("La rbna m3ak baa", error);
   }
 };
 
-// --- COUNTER CORE ANIMATION METHOD ---
 function setNumber(digitElement, value) {
   const height = 50;
   const offset = value * height;
   digitElement.style.transform = `translateY(-${offset}px)`;
 }
 
-// --- DISPLAY SYNC HELPERS ---
 function updateSavingsDisplay(value) {
   const savingsStr = String(value).padStart(6, "0");
   const digitsArray = savingsStr.split("").map(Number);
@@ -119,10 +120,8 @@ function updateEmergencyDisplay(value) {
 }
 
 onMounted(async () => {
-  // 1. Wait for Flask timeline payload
   await getData();
 
-  // 2. Set up Intersection Observers
   const observerOptions = {
     threshold: [0.4, 0.2],
     rootMargin: "0px 0px -10% 0px",
@@ -152,7 +151,6 @@ onMounted(async () => {
   if (middleRowRef.value) observer.observe(middleRowRef.value);
   if (tableRowRef.value) observer.observe(tableRowRef.value);
 
-  // 3. Staggered Timeline Tickers
   setTimeout(() => {
     let totalEmergency = 0;
     updateEmergencyDisplay(totalEmergency);
@@ -166,7 +164,7 @@ onMounted(async () => {
     }, 100);
 
     const baseSavings = financialMetrics.value.base_savings || 0;
-    updateSavingsDisplay(baseSavings); // Visual initialization to your signup baseline
+    updateSavingsDisplay(baseSavings);
 
     const savingsHistory = financialMetrics.value.savings_history || [];
     const totalExtraSavings = savingsHistory.reduce(
@@ -175,15 +173,13 @@ onMounted(async () => {
     );
     const finalSavingsTotal = baseSavings + totalExtraSavings;
 
-    // Trigger a single roll straight from baseline to final total
     setTimeout(() => {
       updateSavingsDisplay(finalSavingsTotal);
       financialMetrics.value.current_savings = finalSavingsTotal;
     }, 100);
-  }, 1700); // Retain your initial layout settling delay
-}); // 🌟 Clean closure of onMounted without trailing garbage numbers
+  }, 1700);
+});
 
-// --- CHART PLOT LOGIC CONFS ---
 const SavingsData = {
   labels: [
     "Jan",
@@ -225,7 +221,6 @@ const donutData = {
   ],
 };
 
-// Change this to a reactive ref
 const MidlleRowGraph = ref({
   labels: ["July", "August", "September", "October", "November", "December"],
   datasets: [
@@ -260,9 +255,9 @@ const chartOptions = {
   resizeDelay: 0,
   animation: { duration: 400 },
   plugins: {
-    legend: { display: false }, // Keeps the top header perfectly clean
+    legend: { display: false },
     tooltip: {
-      backgroundColor: "#1E1E2F", // Matches dark UI theme
+      backgroundColor: "#1E1E2F",
       titleColor: "#ffffff",
       bodyColor: "#A3A3B5",
       borderColor: "rgba(255, 255, 255, 0.1)",
@@ -278,7 +273,7 @@ const chartOptions = {
         color: "rgba(255, 255, 255, 0.6)",
         callback: function (value) {
           return "$" + value;
-        }, // Adds context to the numbers
+        },
       },
     },
     x: {
@@ -1495,14 +1490,6 @@ svg {
 }
 
 @media (max-width: 480px) {
-  .content-view {
-    /* padding: 0 10px 20px; */
-  }
-
-  .mainContainer {
-    /* padding: 56px 10px 24px; */
-  }
-
   .titles h1 {
     font-size: 1.45rem;
   }

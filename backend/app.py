@@ -39,13 +39,158 @@ db_config = {
 def get_db_connection():
     return pymysql.connect(**db_config)
 
+
+def get_request_data():
+    if request.is_json:
+        return request.get_json(silent=True) or {}
+
+    form_data = request.form.to_dict()
+    if form_data:
+        return form_data
+
+    try:
+        return request.get_json(silent=True) or {}
+    except Exception:
+        return {}
+
+
+def parse_user_id(identity):
+    try:
+        return int(identity)
+    except (ValueError, TypeError):
+        return None
+
+
+def to_float(val, default=0.0):
+    try:
+        if val is None or str(val).strip() == "":
+            return default
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def to_int(val, default=0):
+    try:
+        if val is None or str(val).strip() == "":
+            return default
+        return int(float(val))
+    except (ValueError, TypeError):
+        return default
+
+
+def build_profile_from_calc(calc_result):
+    if not calc_result:
+        return {
+            "monthly_savings": 0,
+            "savings_rate": 0,
+            "balance_36mo": 0,
+            "completion_date": str(date.today()),
+            "total_contributed": 0,
+            "time_to_goal": 12,
+            "savings_target": 0,
+        }
+
+    savings_target = to_float(calc_result.get("savings_target"))
+    timeline = to_int(calc_result.get("timeline"), 12)
+    if timeline <= 0:
+        timeline = 12
+
+    annual_income = to_float(calc_result.get("annual_income"), 1)
+    if annual_income <= 0:
+        annual_income = 1
+
+    monthly_savings = savings_target / timeline
+    savings_rate = (monthly_savings / (annual_income / 12)) * 100
+    balance_36mo = monthly_savings * 36
+    completion_date = calc_result.get("completion_date")
+    if completion_date:
+        completion_date = str(completion_date)
+    else:
+        completion_date = str(date.today() + relativedelta(months=timeline))
+
+    return {
+        "monthly_savings": round(monthly_savings, 2),
+        "savings_rate": round(savings_rate, 1),
+        "balance_36mo": round(balance_36mo, 2),
+        "completion_date": completion_date,
+        "total_contributed": round(max(0.0, annual_income - savings_target), 2),
+        "time_to_goal": timeline,
+        "savings_target": savings_target,
+    }
+
+
+def initialize_database():
+    connection = get_db_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS userinfo (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    first_name VARCHAR(100),
+                    last_name VARCHAR(100),
+                    date_birth DATE,
+                    pass VARCHAR(255),
+                    email VARCHAR(255) UNIQUE
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS calculation_table (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    annual_income DECIMAL(12,2),
+                    savings_target DECIMAL(12,2),
+                    timeline INT,
+                    total_savings DECIMAL(12,2),
+                    emergency_fund DECIMAL(12,2),
+                    completion_date DATE,
+                    user_id INT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS extradata (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    monthly_contributed DECIMAL(12,2),
+                    debt_contributions DECIMAL(12,2),
+                    emergency_contribtuions DECIMAL(12,2),
+                    user_id INT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS subscription_ledger (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    subscription_name VARCHAR(255),
+                    subscription_price DECIMAL(12,2),
+                    subscriptions_status VARCHAR(50),
+                    user_id INT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS transaction_ledger (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    transaction_name VARCHAR(255),
+                    transaction_value DECIMAL(12,2),
+                    transaction_date DATE,
+                    user_id INT
+                )
+            """)
+        connection.commit()
+    except Exception as e:
+        connection.rollback()
+        print(f"Database initialization failed: {str(e)}")
+    finally:
+        connection.close()
+
+
+initialize_database()
+
 @app.route("/login", methods=["POST"])
 def login():
     connection = None
     try:
-        data = request.get_json()
-        email = data.get('email')
-        password = data.get("password")
+        data = get_request_data()
+
+        email = data.get('email') or data.get('mail')
+        password = data.get('password') or data.get('passw') or data.get('pass')
         if not email or not password:
             return jsonify({"error": "Email and password required"}), 400
 
@@ -57,10 +202,27 @@ def login():
 
             if user and user['pass'] == password:
                 access_token = create_access_token(identity=str(user['id']))
+                cursor.execute(
+                    """
+                    SELECT annual_income, savings_target, timeline, total_savings,
+                           emergency_fund, completion_date
+                    FROM calculation_table
+                    WHERE user_id = %s
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (user["id"],),
+                )
+                calc_result = cursor.fetchone()
+                profile = build_profile_from_calc(calc_result)
+                base_savings = to_float(calc_result.get("total_savings")) if calc_result else 0.0
+
                 return jsonify({
                     "message": "Login successful",
                     "token": access_token,
-                    "user_id": user['id']
+                    "user_id": user['id'],
+                    "profile": profile,
+                    "base_savings": base_savings,
                 }), 200
 
             return jsonify({"error": "Invalid email or password"}), 401
@@ -75,20 +237,33 @@ def login():
 
 @app.route("/api/calculate", methods=['POST'])
 def save_calculations():
-    data = request.get_json()
+    data = get_request_data()
+
     if not data:
         return jsonify({"error": "Missing request body"}), 400
 
-    annual_income = data.get('annual_income')
-    savings_target = data.get('savings_target')
-    timeline = int(data.get('timeline') or 0)
-    total_savings = data.get('total_savings')
-    emergency_fund = data.get('emergency_fund')
     first_name = data.get('first_name')
     last_name = data.get('last_name')
     date_birth = data.get('date_birth')
-    passw = data.get('passw')
-    email = data.get('mail')
+    passw = data.get('passw') or data.get('password')
+    email = data.get('mail') or data.get('email')
+
+    if not first_name or not last_name or not email or not passw:
+        return jsonify({"error": "First name, last name, email, and password are required"}), 400
+
+    if not date_birth or str(date_birth).strip() == "":
+        date_birth = None
+
+    annual_income = to_float(data.get('annual_income'))
+    savings_target = to_float(data.get('savings_target'))
+    timeline = to_int(data.get('timeline'), 12)
+    total_savings = to_float(data.get('total_savings'))
+    emergency_fund = to_float(data.get('emergency_fund'))
+
+    if timeline <= 0:
+        timeline = 12
+    if annual_income <= 0 or savings_target <= 0:
+        return jsonify({"error": "Annual income and savings target must be greater than zero"}), 400
 
     calculated_completion = date.today() + relativedelta(months=timeline)
     connection = get_db_connection()
@@ -109,13 +284,27 @@ def save_calculations():
 
         connection.commit()
         access_token = create_access_token(identity=str(user_id))
+        calc_row = {
+            "annual_income": annual_income,
+            "savings_target": savings_target,
+            "timeline": timeline,
+            "total_savings": total_savings,
+            "emergency_fund": emergency_fund,
+            "completion_date": calculated_completion,
+        }
+        profile = build_profile_from_calc(calc_row)
 
         return jsonify({
             "message": "Profile and Calculation saved successfully",
             "token": access_token,
-            "user_id": user_id
+            "user_id": user_id,
+            "profile": profile,
+            "base_savings": total_savings,
         }), 201
 
+    except pymysql.err.IntegrityError:
+        connection.rollback()
+        return jsonify({"error": "Email already registered. Please login instead."}), 409
     except Exception as e:
         connection.rollback()
         print(f"Database insertion failed: {str(e)}")
@@ -237,7 +426,7 @@ def fetch_info():
 @jwt_required()
 def extra_data():
     user_id = get_jwt_identity()
-    data = request.get_json() or {}
+    data = get_request_data()
 
     def clean(key, is_numeric=False):
         val = data.get(key)

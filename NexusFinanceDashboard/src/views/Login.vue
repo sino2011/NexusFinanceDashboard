@@ -4,23 +4,43 @@ import axios from "axios";
 import router from "@/router/router";
 
 const data = ref({
-  email: null,
-  password: null,
+  email: "",
+  password: "",
 });
 const error = ref(null);
 
 const submitData = async () => {
   error.value = null;
 
+  if (!data.value.email || !data.value.password) {
+    error.value = "Please enter your email and password.";
+    return;
+  }
+
   try {
+    // Sending cleanly as a JSON object directly matching what backend expects
     const response = await axios.post(
       "https://yassinafify.pythonanywhere.com/login",
-      data.value,
+      {
+        email: data.value.email,
+        password: data.value.password,
+      },
     );
-    // Modified to look for the message string or the presence of a token
+
     if (response.data?.message === "Login successful" || response.data?.token) {
-      // SAVE TOKEN TO STORAGE FOR PROTECTED VIEWS
-      localStorage.setItem("token", response.data.token);
+      localStorage.setItem("token", response.data.token || "");
+      localStorage.setItem("user_id", String(response.data.user_id || ""));
+
+      // If the backend returned a calculated profile, cache it safely
+      if (response.data.profile) {
+        sessionStorage.setItem(
+          "nexus_plan_profile",
+          JSON.stringify({
+            profile: response.data.profile,
+            base_savings: response.data.base_savings ?? 0,
+          }),
+        );
+      }
 
       router.push({ name: "Home" });
     } else {
@@ -31,6 +51,7 @@ const submitData = async () => {
   }
 };
 </script>
+
 <template>
   <div class="login">
     <div class="main">
@@ -49,10 +70,10 @@ const submitData = async () => {
             <p>Password:</p>
             <input v-model="data.password" type="password" placeholder="" />
           </div>
-          <button>Login</button>
+          <button type="submit">Login</button>
           <p class="error" v-if="error">{{ error }}</p>
           <p class="register">
-            Dont Have an Account?
+            Don't Have an Account?
             <a href="/NexusFinanceDashboard/#/signUp">Register</a>
           </p>
         </form>

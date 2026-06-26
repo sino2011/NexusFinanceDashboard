@@ -46,6 +46,10 @@ const tableRowRef = ref(null);
 const middleRowRef = ref(null);
 const emergencyTarget = ref([]);
 
+const API_BASE = import.meta.env.PROD
+  ? "https://yassinafify.pythonanywhere.com"
+  : "";
+
 const financialMetrics = ref({
   savings_target: 0,
   base_savings: 0,
@@ -73,10 +77,7 @@ function toggleSiderbar() {
 const getData = async () => {
   try {
     // Attached auth header
-    const response = await axios.get(
-      "https://yassinafify.pythonanywhere.com/Reports",
-      getAuthHeaders(),
-    );
+    const response = await axios.get(`${API_BASE}/Reports`, getAuthHeaders());
 
     console.log("Flask payload received:", response.data);
     financialMetrics.value = response.data;

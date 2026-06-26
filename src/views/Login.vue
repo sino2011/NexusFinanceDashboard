@@ -4,24 +4,34 @@ import axios from "axios";
 import router from "@/router/router";
 
 const data = ref({
-  email: null,
-  password: null,
+  email: "",
+  password: "",
 });
 const error = ref(null);
+const API_BASE = import.meta.env.PROD
+  ? "https://yassinafify.pythonanywhere.com"
+  : "";
 
 const submitData = async () => {
   error.value = null;
 
-  try {
-    const response = await axios.post(
-      "https://yassinafify.pythonanywhere.com/login",
-      data.value,
-    );
-    // Modified to look for the message string or the presence of a token
-    if (response.data?.message === "Login successful" || response.data?.token) {
-      // SAVE TOKEN TO STORAGE FOR PROTECTED VIEWS
-      localStorage.setItem("token", response.data.token);
+  if (!data.value.email || !data.value.password) {
+    error.value = "Please enter your email and password.";
+    return;
+  }
 
+  try {
+    const payload = new URLSearchParams();
+    payload.append("email", data.value.email);
+    payload.append("password", data.value.password);
+
+    const response = await axios.post(`${API_BASE}/login`, payload, {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    });
+
+    if (response.data?.message === "Login successful" || response.data?.token) {
+      localStorage.setItem("token", response.data.token || "");
+      localStorage.setItem("user_id", response.data.user_id || "");
       router.push({ name: "Home" });
     } else {
       error.value = response.data?.error || "Login failed";
@@ -53,7 +63,7 @@ const submitData = async () => {
           <p class="error" v-if="error">{{ error }}</p>
           <p class="register">
             Dont Have an Account?
-            <a href="/NexusFinanceDashboard/#/signUp">Register</a>
+            <router-link to="/signup">Register</router-link>
           </p>
         </form>
       </div>

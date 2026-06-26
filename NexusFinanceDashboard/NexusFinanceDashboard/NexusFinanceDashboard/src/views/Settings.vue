@@ -1,7 +1,7 @@
 <script setup>
 import { RouterLink } from "vue-router";
-import { ref, onMounted, TrackOpTypes } from "vue";
-import axios from "axios";
+import { ref } from "vue";
+import axios from "axios"; //  Fixed this import to pull from axios
 
 const isVisible = ref(false);
 const income1 = ref(500);
@@ -19,8 +19,14 @@ const extraData = ref({
   transaction_date: "",
 });
 
+// Secure headers helper
+const getAuthHeaders = () => {
+  const token = localStorage.getItem("token");
+  return { headers: { Authorization: token ? `Bearer ${token}` : "" } };
+};
+
 const formatCurrency = (val) => {
-  const displayVal = val !== null ? val : 500; // Shows $500 baseline if untouched
+  const displayVal = val !== null ? val : 500;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -38,6 +44,7 @@ const sendData = async () => {
     const response = await axios.post(
       "https://yassinafify.pythonanywhere.com/settings",
       extraData.value,
+      getAuthHeaders(),
     );
 
     extraData.value = {

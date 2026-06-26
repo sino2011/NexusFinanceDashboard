@@ -9,6 +9,17 @@ const data = ref({
 });
 const error = ref(null);
 
+const PLAN_CACHE_KEY = "nexus_plan_profile";
+
+const cachePlanProfile = (profile, baseSavings = 0) => {
+  if (profile?.savings_target) {
+    sessionStorage.setItem(
+      PLAN_CACHE_KEY,
+      JSON.stringify({ profile, base_savings: baseSavings }),
+    );
+  }
+};
+
 const submitData = async () => {
   error.value = null;
 
@@ -17,10 +28,16 @@ const submitData = async () => {
       "https://yassinafify.pythonanywhere.com/login",
       data.value,
     );
-    // Modified to look for the message string or the presence of a token
-    if (response.data?.message === "Login successful" || response.data?.token) {
-      // SAVE TOKEN TO STORAGE FOR PROTECTED VIEWS
+    if (response.data?.token) {
       localStorage.setItem("token", response.data.token);
+
+      if (response.data.user_id) {
+        localStorage.setItem("user_id", String(response.data.user_id));
+      }
+
+      if (response.data.profile) {
+        cachePlanProfile(response.data.profile, response.data.base_savings ?? 0);
+      }
 
       router.push({ name: "Home" });
     } else {

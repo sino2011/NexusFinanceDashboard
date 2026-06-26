@@ -48,6 +48,9 @@ const homeMetrics = ref({
   debt_contributions: 0,
 });
 const tables = ref([]);
+const API_BASE = import.meta.env.PROD
+  ? "https://yassinafify.pythonanywhere.com"
+  : "";
 
 // Helper function to dynamically add authorization headers
 const getAuthHeaders = () => {
@@ -123,10 +126,7 @@ const getDigitsArray = (num, length) => {
 const fetchHomeData = async () => {
   try {
     isLoadingHome.value = true;
-    const response = await axios.get(
-      "https://yassinafify.pythonanywhere.com/home",
-      getAuthHeaders(),
-    );
+    const response = await axios.get(`${API_BASE}/home`, getAuthHeaders());
 
     if (response.data && response.data.profile) {
       calculationsData.value = response.data.profile;
@@ -186,7 +186,7 @@ const fetchHomeData = async () => {
 const fetchSubscriptions = async () => {
   try {
     const response = await axios.get(
-      "https://yassinafify.pythonanywhere.com/api/subscriptions",
+      `${API_BASE}/api/subscriptions`,
       getAuthHeaders(),
     );
 
@@ -226,7 +226,7 @@ const deleteSubscription = async (id) => {
   try {
     // Added Auth Headers
     const response = await axios.delete(
-      `https://yassinafify.pythonanywhere.com/api/subscriptions/${id}`,
+      `${API_BASE}/api/subscriptions/${id}`,
       getAuthHeaders(),
     );
     if (response.status === 200) {

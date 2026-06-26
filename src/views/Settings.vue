@@ -7,6 +7,9 @@ const isVisible = ref(false);
 const income1 = ref(500);
 const income2 = ref(500);
 const income3 = ref(500);
+const API_BASE = import.meta.env.PROD
+  ? "https://yassinafify.pythonanywhere.com"
+  : "";
 const extraData = ref({
   monthly_contributed: null,
   debt_contributions: null,
@@ -42,7 +45,7 @@ function toggleSiderbar() {
 const sendData = async () => {
   try {
     const response = await axios.post(
-      "https://yassinafify.pythonanywhere.com/settings",
+      `${API_BASE}/settings`,
       extraData.value,
       getAuthHeaders(),
     );

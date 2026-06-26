@@ -49,6 +49,36 @@ const homeMetrics = ref({
 });
 const tables = ref([]);
 
+const PLAN_CACHE_KEY = "nexus_plan_profile";
+
+const cachePlanProfile = (profile, baseSavings = 0) => {
+  if (profile?.savings_target) {
+    sessionStorage.setItem(
+      PLAN_CACHE_KEY,
+      JSON.stringify({ profile, base_savings: baseSavings }),
+    );
+  }
+};
+
+const loadCachedPlanProfile = () => {
+  try {
+    const raw = sessionStorage.getItem(PLAN_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const applyPlanProfile = (profile, baseSavings = 0) => {
+  if (profile?.savings_target) {
+    calculationsData.value = profile;
+  }
+  if (baseSavings > 0) {
+    homeMetrics.value.total_savings = baseSavings;
+  }
+};
+
 // Helper function to dynamically add authorization headers
 const getAuthHeaders = () => {
   let token = localStorage.getItem("token");
@@ -128,8 +158,17 @@ const fetchHomeData = async () => {
       getAuthHeaders(),
     );
 
-    if (response.data && response.data.profile) {
+    if (response.data && response.data.profile?.savings_target) {
       calculationsData.value = response.data.profile;
+      cachePlanProfile(
+        response.data.profile,
+        response.data.base_savings ?? 0,
+      );
+    } else {
+      const cached = loadCachedPlanProfile();
+      if (cached?.profile) {
+        applyPlanProfile(cached.profile, cached.base_savings ?? 0);
+      }
     }
     const baseSavings = response.data.base_savings || 0;
     const history = response.data.savings_history || [];
@@ -178,6 +217,10 @@ const fetchHomeData = async () => {
     }, 1600);
   } catch (error) {
     console.error("Error fetching home data: ", error);
+    const cached = loadCachedPlanProfile();
+    if (cached?.profile) {
+      applyPlanProfile(cached.profile, cached.base_savings ?? 0);
+    }
   } finally {
     isLoadingHome.value = false;
   }
@@ -185,17 +228,38 @@ const fetchHomeData = async () => {
 
 const fetchSubscriptions = async () => {
   try {
-    // Added Auth Headers
     const response = await axios.get(
       "https://yassinafify.pythonanywhere.com/api/subscriptions",
       getAuthHeaders(),
     );
-    tables.value = response.data.map((item) => ({
-      id: item.id,
-      name: item.subscription_name,
-      value: `${item.subscription_price}$`,
-      status: item.subscriptions_status || "Pending",
-    }));
+
+    // Log this directly to the console so you can inspect the exact key names returned by the DB
+    console.log("Subscriptions raw response payload:", response.data);
+
+    if (!Array.isArray(response.data)) {
+      console.error("Expected array but received:", response.data);
+      tables.value = [];
+      return;
+    }
+
+    tables.value = response.data.map((item) => {
+      // Safely access properties whether the DB column has an 's' or not
+      const price =
+        item.subscription_price !== undefined &&
+        item.subscription_price !== null
+          ? item.subscription_price
+          : 0;
+
+      const statusValue =
+        item.subscriptions_status || item.subscription_status || "Pending";
+
+      return {
+        id: item.id,
+        name: item.subscription_name || "Unknown Subscription",
+        value: `${price}$`,
+        status: statusValue,
+      };
+    });
   } catch (error) {
     console.error("Error connecting with backend subscription pipeline", error);
   }
@@ -248,6 +312,11 @@ const animateCounters = () => {
 };
 
 onMounted(() => {
+  const cached = loadCachedPlanProfile();
+  if (cached?.profile) {
+    applyPlanProfile(cached.profile, cached.base_savings ?? 0);
+  }
+
   fetchHomeData();
   fetchSubscriptions();
 

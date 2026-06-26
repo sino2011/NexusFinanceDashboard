@@ -55,19 +55,16 @@ const router = createRouter({
   },
 });
 
-// router.beforeEach((to, from, next) => {
-//   const hasAccount = localStorage.getItem("nexus_user_registered");
+router.beforeEach((to, from, next) => {
+  const hasToken = Boolean(localStorage.getItem("token"));
 
-//   if (to.name === "Signup" && hasAccount) {
-//     next("/Home");
-//   } else if (
-//     to.matched.some((record) => record.meta.requiresAccount) &&
-//     !hasAccount
-//   ) {
-//     next("/");
-//   } else {
-//     next();
-//   }
-// });
+  if (to.meta.requiresAccount && !hasToken) {
+    next({ name: "Login" });
+  } else if ((to.name === "Login" || to.name === "Signup") && hasToken) {
+    next({ name: "Home" });
+  } else {
+    next();
+  }
+});
 
 export default router;
