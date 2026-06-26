@@ -52,9 +52,20 @@ const tables = ref([]);
 // Helper function to dynamically add authorization headers
 const getAuthHeaders = () => {
   const token = localStorage.getItem("token");
+  if (!token) {
+    console.warn("No token found in localStorage!");
+    return {};
+  }
+
+  // Clean up token string if it accidentally has double quotes or manual "Bearer " wrapped around it
+  token = token.replace(/^["']|["']$/g, "").trim();
+  if (token.startsWith("Bearer ")) {
+    token = token.slice(7).trim();
+  }
+
   return {
     headers: {
-      Authorization: token ? `Bearer ${token}` : "",
+      Authorization: `Bearer ${token}`,
     },
   };
 };
@@ -112,7 +123,6 @@ const getDigitsArray = (num, length) => {
 const fetchHomeData = async () => {
   try {
     isLoadingHome.value = true;
-    // Added Auth Headers
     const response = await axios.get(
       "https://yassinafify.pythonanywhere.com/home",
       getAuthHeaders(),
