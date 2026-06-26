@@ -1,0 +1,85 @@
+Total spent: 
+
+Week 1: 380
+
+Week 2: 440
+
+Week 3: 500
+
+Week 4: 610
+
+Monthly Average:
+
+January: 2180
+
+February: 2400
+
+March: 2450
+
+April: 2600
+
+May: 2400
+
+June: 2500
+
+July: 3200
+
+August: 3500
+
+September: 4000
+
+October: 3720
+
+November: 3500
+
+December: 4125
+
+Active Subscriptions: 
+
+Jan: 4
+
+Feb: 4
+
+Mar: 5
+
+April: 6
+
+May: 5
+
+Jun: 3
+
+Jul: 7
+
+Aug: 5
+
+Sep: 2
+
+Oct: 6
+
+Nov: 2
+
+Dec: 7
+
+Deep Dive (Main):
+
+July: 2950
+
+August: 3000
+
+September: 3650
+
+October: 3420
+
+November: 3120
+
+December: 3920
+
+Donut Chart:
+
+Food: 40
+
+Rent: 30
+
+Entertainment: 20
+
+Others: 10
