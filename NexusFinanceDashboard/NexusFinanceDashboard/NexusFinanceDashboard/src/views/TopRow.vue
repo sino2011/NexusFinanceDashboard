@@ -49,37 +49,17 @@ const homeMetrics = ref({
 });
 const tables = ref([]);
 
-// Helper function to dynamically add authorization headers
-const getAuthHeaders = () => {
-  let token = localStorage.getItem("token");
-  if (!token) {
-    console.warn("No token found in localStorage!");
-    return {};
-  }
-
-  // Clean up token string if it accidentally has double quotes or manual "Bearer " wrapped around it
-  token = token.replace(/^["']|["']$/g, "").trim();
-  if (token.startsWith("Bearer ")) {
-    token = token.slice(7).trim();
-  }
-
-  return {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  };
-};
-
 const formatCompletionDate = (dateString) => {
   if (!dateString || dateString === "---") return "---";
   const date = new Date(dateString);
+  // If the backend returns a clean date string, parse it natively
   if (!isNaN(date.getTime())) {
     return date.toLocaleDateString("en-US", {
       month: "short",
       year: "numeric",
     });
   }
-  return dateString;
+  return dateString; // Fallback to raw string if it's already pre-formatted
 };
 
 const isProfileIncomplete = computed(() => {
@@ -94,6 +74,8 @@ const getProjectedDate = (monthsToGoal) => {
   return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
 };
 
+// Updated Progress calculations ensuring they return 0 if data isn't loaded yet
+// Safeguarded Progress Calculations to handle 0 values gracefully
 const balancedProgress = computed(() => {
   const target = calculationsData.value.savings_target;
   const current = calculationsData.value.balance_36mo;
@@ -125,7 +107,6 @@ const fetchHomeData = async () => {
     isLoadingHome.value = true;
     const response = await axios.get(
       "https://yassinafify.pythonanywhere.com/home",
-      getAuthHeaders(),
     );
 
     if (response.data && response.data.profile) {
@@ -135,16 +116,19 @@ const fetchHomeData = async () => {
     const history = response.data.savings_history || [];
     const debtHistory = response.data.debt || [];
 
+    // Calculate total savings by summing up historical contributions
     const totalContributions = history.reduce((sum, val) => sum + val, 0);
     const backendChartData = response.data.monthly_averages_chart || [];
 
+    // Get the latest monthly contribution added (or default to 0)
     const currentMonthlyContributed =
       history.length > 0 ? history[history.length - 1] : 0;
     const currentDebtContributions =
       debtHistory.length > 0 ? debtHistory[debtHistory.length - 1] : 0;
 
+    // Assign the computed values to your reactive state
     homeMetrics.value = {
-      total_savings: baseSavings + totalContributions,
+      total_savings: baseSavings + totalContributions, // Base savings + ongoing add-ons
       monthly_contributed: currentMonthlyContributed,
       debt_contributions: currentDebtContributions,
     };
@@ -155,7 +139,7 @@ const fetchHomeData = async () => {
 
     if (backendChartData.length > 0) {
       chartData2.value = {
-        labels: [...chartData2.value.labels],
+        labels: [...chartData2.value.labels], // keeps your months labels
         datasets: [
           {
             ...chartData2.value.datasets[0],
@@ -187,36 +171,13 @@ const fetchSubscriptions = async () => {
   try {
     const response = await axios.get(
       "https://yassinafify.pythonanywhere.com/api/subscriptions",
-      getAuthHeaders(),
     );
-
-    // Log this directly to the console so you can inspect the exact key names returned by the DB
-    console.log("Subscriptions raw response payload:", response.data);
-
-    if (!Array.isArray(response.data)) {
-      console.error("Expected array but received:", response.data);
-      tables.value = [];
-      return;
-    }
-
-    tables.value = response.data.map((item) => {
-      // Safely access properties whether the DB column has an 's' or not
-      const price =
-        item.subscription_price !== undefined &&
-        item.subscription_price !== null
-          ? item.subscription_price
-          : 0;
-
-      const statusValue =
-        item.subscriptions_status || item.subscription_status || "Pending";
-
-      return {
-        id: item.id,
-        name: item.subscription_name || "Unknown Subscription",
-        value: `${price}$`,
-        status: statusValue,
-      };
-    });
+    tables.value = response.data.map((item) => ({
+      id: item.id,
+      name: item.subscription_name,
+      value: `${item.subscription_price}$`,
+      status: item.subscriptions_status || "Pending",
+    }));
   } catch (error) {
     console.error("Error connecting with backend subscription pipeline", error);
   }
@@ -224,10 +185,8 @@ const fetchSubscriptions = async () => {
 
 const deleteSubscription = async (id) => {
   try {
-    // Added Auth Headers
     const response = await axios.delete(
       `https://yassinafify.pythonanywhere.com/api/subscriptions/${id}`,
-      getAuthHeaders(),
     );
     if (response.status === 200) {
       tables.value = tables.value.filter((tx) => tx.id !== id);
@@ -238,6 +197,7 @@ const deleteSubscription = async (id) => {
 };
 
 const animateCounters = () => {
+  // 1. Total Savings
   const savingsValue = Number(homeMetrics.value.total_savings) || 0;
   const totalSavingsDigits = getDigitsArray(homeMetrics.value.total_savings, 6);
   totalSavingsDigits.forEach((digitValue, index) => {
@@ -256,6 +216,7 @@ const animateCounters = () => {
     }
   });
 
+  // 3. Home Downpayment
   const debtValue = Number(homeMetrics.value.debt_contributions) || 0;
   const homeDebtDigits = getDigitsArray(debtValue, 4);
   homeDebtDigits.forEach((digitValue, index) => {
@@ -266,12 +227,24 @@ const animateCounters = () => {
       console.error(`Missing DOM ID: "digit-${index + 1}" was not found.`);
     }
   });
+  const getPrecent = (currentVal, min = 500, max = 7500) => {
+    return ((currentVal - min) / (max - min)) * 100;
+  };
 };
+
+// const GetData = async () => {
+//     try{
+//         const response = await axios.get("http://localhost:5000/home")
+//         calculationsData.value = response.data
+//     }catch(error){
+//         console.error('error sending data', error)
+//     }
+// }
 
 onMounted(() => {
   fetchHomeData();
   fetchSubscriptions();
-
+  // GetData()
   const observerOptions = {
     threshold: 0.4,
     rootMargin: "0px 0px -50px 0px",
@@ -404,6 +377,14 @@ const chartOptions = {
     },
   },
 };
+
+// const tables = [
+//     {id:1, name: 'Netflix', value: '30$', status: 'Paid'},
+//     {id:2, name: 'Hulu', value: '20$', status: 'Pending'},
+//     {id:3, name: 'Spotify', value: '9.99$', status: 'Paid'},
+//     {id:4, name: 'Youtube Premium', value: '12$', status: 'Paid'},
+//     {id:5, name: 'ChatGpt Plus', value: '45$', status: 'Pending'},
+// ]
 
 function toggleSiderbar() {
   isVisible.value = !isVisible.value;

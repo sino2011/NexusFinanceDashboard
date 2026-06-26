@@ -6,22 +6,15 @@ import { onMounted } from "vue";
 const isVisible = ref(false);
 const transactions = ref([]);
 
-// Secure headers helper
-const getAuthHeaders = () => {
-  const token = localStorage.getItem("token");
-  return { headers: { Authorization: token ? `Bearer ${token}` : "" } };
-};
-
 const getData = async () => {
   try {
-    // Attached auth header
     const response = await axios.get(
       "https://yassinafify.pythonanywhere.com/Transactions",
-      getAuthHeaders(),
     );
 
     transactions.value = response.data.map((tx, index) => {
       const rawDate = new Date(tx.transaction_date);
+
       const formattedDate = rawDate.toLocaleDateString("en-US", {
         weekday: "short",
         day: "2-digit",
@@ -45,10 +38,8 @@ const getData = async () => {
 
 const deleteTransaction = async (id) => {
   try {
-    // Attached auth header
     const response = await axios.delete(
       `https://yassinafify.pythonanywhere.com/Transactions/${id}`,
-      getAuthHeaders(),
     );
     if (response.status === 200) {
       transactions.value = transactions.value.filter((tx) => tx.id !== id);
