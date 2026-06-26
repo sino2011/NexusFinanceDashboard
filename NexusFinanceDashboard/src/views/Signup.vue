@@ -53,9 +53,15 @@ const submitData = async () => {
     );
     statusMessage.value = response.data.message;
 
+    // --- FIX IS HERE: Save the token received from the backend ---
+    if (response.data && response.data.token) {
+      localStorage.setItem("token", response.data.token);
+    }
+
     localStorage.setItem("nexus_user_registered", "true");
     router.push("/Home");
 
+    // Reset form fields
     formData.value = {
       first_name: "",
       last_name: "",

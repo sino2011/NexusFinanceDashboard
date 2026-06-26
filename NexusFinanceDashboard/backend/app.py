@@ -44,6 +44,84 @@ db_config = {
 def get_db_connection():
     return pymysql.connect(**db_config)
 
+
+def get_request_data():
+    if request.is_json:
+        return request.get_json(silent=True) or {}
+
+    form_data = request.form.to_dict()
+    if form_data:
+        return form_data
+
+    try:
+        return request.get_json(silent=True) or {}
+    except Exception:
+        return {}
+
+
+def initialize_database():
+    connection = get_db_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS userinfo (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    first_name VARCHAR(100),
+                    last_name VARCHAR(100),
+                    date_birth DATE,
+                    pass VARCHAR(255),
+                    email VARCHAR(255) UNIQUE
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS calculation_table (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    annual_income DECIMAL(12,2),
+                    savings_target DECIMAL(12,2),
+                    timeline INT,
+                    total_savings DECIMAL(12,2),
+                    emergency_fund DECIMAL(12,2),
+                    completion_date DATE,
+                    user_id INT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS extradata (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    monthly_contributed DECIMAL(12,2),
+                    debt_contributions DECIMAL(12,2),
+                    emergency_contribtuions DECIMAL(12,2),
+                    user_id INT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS subscription_ledger (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    subscription_name VARCHAR(255),
+                    subscription_price DECIMAL(12,2),
+                    subscriptions_status VARCHAR(50),
+                    user_id INT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS transaction_ledger (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    transaction_name VARCHAR(255),
+                    transaction_value DECIMAL(12,2),
+                    transaction_date DATE,
+                    user_id INT
+                )
+            """)
+        connection.commit()
+    except Exception as e:
+        connection.rollback()
+        print(f"Database initialization failed: {str(e)}")
+    finally:
+        connection.close()
+
+
+initialize_database()
+
 @app.route("/login", methods=["POST"])
 def login():
     connection = None
@@ -93,8 +171,8 @@ def save_calculations():
     first_name = data.get('first_name')
     last_name = data.get('last_name')
     date_birth = data.get('date_birth')
-    passw = data.get('passw')
-    email = data.get('mail')
+    passw = data.get('passw') or data.get('password')
+    email = data.get('mail') or data.get('email')
 
     calculated_completion = date.today() + relativedelta(months=timeline)
     connection = get_db_connection()
@@ -211,7 +289,7 @@ def fetch_info():
 @jwt_required()
 def extra_data():
     user_id = get_jwt_identity()
-    data = request.get_json() or {}
+    data = get_request_data()
 
     def clean(key, is_numeric=False):
         val = data.get(key)
