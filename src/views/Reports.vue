@@ -50,7 +50,7 @@ const financialMetrics = ref({
   base_savings: 0,
   current_savings: 0,
   emergency_fund: 0,
-  emergency_target: 0, // Added default baseline
+  emergency_target: 15000, // Added default baseline
   emergency_current: 0, // Added default baseline
   savings_history: [],
   emergency_history: [],
@@ -61,9 +61,27 @@ const financialMetrics = ref({
   },
 });
 
-function toggleSiderbar() {
-  isVisible.value = !isVisible.value;
-}
+const cleanEmergencyTarget = computed(() => {
+  const target = Number(financialMetrics.value.emergency_target);
+  return isNaN(target) || target <= 0 ? 15000 : target;
+});
+
+const emergencyProgressPercent = computed(() => {
+  const current = Number(financialMetrics.value.emergency_current) || 0;
+  const target = cleanEmergencyTarget.value;
+  return Math.min((current / target) * 100, 100) + "%";
+});
+
+const cleanSavingsTarget = computed(() => {
+  const target = Number(financialMetrics.value.savings_target);
+  return isNaN(target) || target <= 0 ? 50000 : target;
+});
+
+const savingsProgressPercent = computed(() => {
+  const current = Number(financialMetrics.value.current_savings) || 0;
+  const target = cleanSavingsTarget.value;
+  return Math.min((current / target) * 100, 100) + "%";
+});
 
 const getData = async () => {
   try {
@@ -341,45 +359,46 @@ const donutOptions = {
               <div v-for="i in 5" :key="i" class="counter">
                 <div class="digit-slot">
                   <div class="digit-strip" :id="'digit-' + i">
-                    <span>0</span><span>1</span><span>2</span><span>3</span
-                    ><span>4</span><span>5</span><span>6</span><span>7</span
-                    ><span>8</span><span>9</span>
+                    <span>0</span><span>1</span><span>2</span><span>3</span>
+                    <span>4</span><span>5</span><span>6</span><span>7</span>
+                    <span>8</span><span>9</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            <p class="goal">
-              Of ${{ financialMetrics.emergency_target || "0" }} target
-            </p>
+            <p class="goal">Of ${{ cleanEmergencyTarget }} target</p>
 
             <div class="Pro-container">
               <div
                 class="Pro"
-                :style="{
-                  width:
-                    financialMetrics.emergency_target > 0
-                      ? Math.min(
-                          (financialMetrics.emergency_current /
-                            financialMetrics.emergency_target) *
-                            100,
-                          100,
-                        ) + '%'
-                      : '0%',
-                }"
-              >
-                <span
-                  v-if="
-                    financialMetrics.emergency_target > 0 &&
-                    (financialMetrics.emergency_current /
-                      financialMetrics.emergency_target) *
-                      100 >
-                      10
-                  "
-                ></span>
-              </div>
+                :style="{ width: emergencyProgressPercent }"
+              ></div>
             </div>
             <p class="Eme">+$265/mo</p>
+          </div>
+
+          <div class="Savings">
+            <h3>Savings</h3>
+            <div class="counter-row">
+              <span class="currency-symbol">$</span>
+              <div v-for="i in 6" :key="i" class="counter">
+                <div class="digit-slot">
+                  <div class="digit-strip" :id="'dig-' + i">
+                    <span>0</span><span>1</span><span>2</span><span>3</span>
+                    <span>4</span><span>5</span><span>6</span><span>7</span>
+                    <span>8</span><span>9</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <p class="target">Of ${{ cleanSavingsTarget }} Target</p>
+
+            <div class="Pro-container">
+              <div class="Pro" :style="{ width: savingsProgressPercent }"></div>
+            </div>
+            <p class="save">+$325/mo</p>
           </div>
 
           <div class="Savings">

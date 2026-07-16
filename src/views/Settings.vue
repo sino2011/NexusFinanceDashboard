@@ -7,11 +7,11 @@ const isVisible = ref(false);
 const income1 = ref(500);
 const income2 = ref(500);
 const income3 = ref(500);
-const extrainfoSuccessMsg = document.getElementById("successExtraInfo");
-const subscriptionSuccessMsg = document.getElementById(
-  "subscriptionSuccessInfo",
-);
-const transactionSuccessMsg = document.getElementById("transactionSuccessInfo");
+
+// Reactive state flags for showing success notifications
+const showExtraSuccess = ref(false);
+const showSubSuccess = ref(false);
+const showTxSuccess = ref(false);
 
 const extraData = ref({
   monthly_contributed: null,
@@ -21,7 +21,7 @@ const extraData = ref({
   subscription_price: "",
   subscription_status: "",
   transaction_name: "",
-  transaction_value: "", // Corrected key matching backend
+  transaction_value: "",
   transaction_date: "",
 });
 
@@ -43,7 +43,16 @@ const sendData = async () => {
       return;
     }
 
-    // Sanitize data before sending: convert empty strings to null or 0 where numeric values are expected
+    // Determine which sections the user actually filled out before we reset the state
+    const hasExtraInfo =
+      extraData.value.monthly_contributed !== null ||
+      extraData.value.debt_contributions !== null ||
+      extraData.value.emergency_contributions !== null;
+
+    const hasSubscription = extraData.value.subscription_name.trim() !== "";
+    const hasTransaction = extraData.value.transaction_name.trim() !== "";
+
+    // Sanitize data before sending
     const payload = {
       ...extraData.value,
       monthly_contributed: extraData.value.monthly_contributed ?? 0,
@@ -71,7 +80,27 @@ const sendData = async () => {
 
     console.log("Settings updated:", response.data);
 
-    // Reset state
+    // Trigger success banners only for the filled sections
+    if (hasExtraInfo) {
+      showExtraSuccess.value = true;
+      setTimeout(() => {
+        showExtraSuccess.value = false;
+      }, 4000);
+    }
+    if (hasSubscription) {
+      showSubSuccess.value = true;
+      setTimeout(() => {
+        showSubSuccess.value = false;
+      }, 4000);
+    }
+    if (hasTransaction) {
+      showTxSuccess.value = true;
+      setTimeout(() => {
+        showTxSuccess.value = false;
+      }, 4000);
+    }
+
+    // Reset state inputs
     extraData.value = {
       monthly_contributed: null,
       debt_contributions: null,
@@ -107,23 +136,7 @@ const sendData = async () => {
     crossorigin="anonymous"
     referrerpolicy="no-referrer"
   />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap"
-    rel="stylesheet"
-  />
-  <!-- <div class="toggle-btn-container" :class="{'shifted' : isVisible}">
-        <i class="fa-solid fa-bars" id="icon" @click="toggleSiderbar" style="margin-left: 15px; margin-top: 20px"></i>
-    </div>
-    <Transition name="slide">
-        <div class="SideBar" id="SideBar" v-show="isVisible">
-            <RouterLink to="/Home" class="a">Home</RouterLink>
-            <RouterLink to="/Transactions" class="a">Transactions</RouterLink>
-            <RouterLink to="/Reports" class="a">Reports</RouterLink>
-            <RouterLink to="/Settings" class="a">Settings</RouterLink>
-        </div>
-    </Transition> -->
+
   <div class="navBar">
     <div class="navItems">
       <RouterLink to="/Home" class="navItem">Home</RouterLink>
@@ -206,8 +219,9 @@ const sendData = async () => {
             <p>$7,500</p>
           </div>
         </div>
-        <p id="successExtraInfo" class="successExtraInfo">
-          Success view your updated info in the home page
+
+        <p v-if="showExtraSuccess" class="successExtraInfo">
+          Success! View your updated info in the home page
         </p>
       </div>
     </div>
@@ -232,11 +246,11 @@ const sendData = async () => {
             type="text"
             placeholder="Status"
           />
-          <!-- <button type="submit">Add Subscription</button> -->
         </div>
       </div>
-      <p id="subscriptionSuccessInfo" class="subscriptionSuccessInfo">
-        Success view your subscription in the home page
+
+      <p v-if="showSubSuccess" class="subscriptionSuccessInfo">
+        Success! View your subscription in the home page
       </p>
     </div>
     <div class="subs">
@@ -259,11 +273,11 @@ const sendData = async () => {
             type="date"
             placeholder="Date"
           />
-          <!-- <button type="submit">Add Transaction</button> -->
         </div>
       </div>
-      <div id="transactionSuccessInfo" class="transactionSuccessInfo">
-        Success view your transaction in the transactions page
+
+      <div v-if="showTxSuccess" class="transactionSuccessInfo">
+        Success! View your transaction in the transactions page
       </div>
     </div>
     <div class="saveContainer">
