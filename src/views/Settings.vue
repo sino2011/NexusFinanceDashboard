@@ -418,6 +418,8 @@ const sendData = async () => {
 .countersContainer {
   display: flex;
   justify-content: center;
+  flex-direction: column;
+  align-items: center;
   width: 100%;
   margin-bottom: 40px;
 }
