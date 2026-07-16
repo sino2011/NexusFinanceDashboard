@@ -396,7 +396,7 @@ onMounted(() => {
                 @input="formData.total_savings = income3"
                 type="range"
                 min="5000"
-                max="500000"
+                max="300000"
                 step="1000"
                 required
               />
@@ -404,7 +404,7 @@ onMounted(() => {
             <div class="bot">
               <p>$5,000</p>
               <p>Current savings across all accounts</p>
-              <p>$100,000</p>
+              <p>$300,000</p>
             </div>
           </div>
           <div class="salaryCard">
@@ -418,7 +418,7 @@ onMounted(() => {
                 @input="formData.emergency_fund = income4"
                 type="range"
                 min="5000"
-                max="100000"
+                max="200000"
                 step="1000"
                 required
               />
@@ -426,7 +426,7 @@ onMounted(() => {
             <div class="bot">
               <p>$5,000</p>
               <p>Your Emergecny fund goal</p>
-              <p>$100,000</p>
+              <p>$200,000</p>
             </div>
           </div>
         </div>

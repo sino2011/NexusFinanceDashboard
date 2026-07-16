@@ -1,26 +1,28 @@
 <script setup>
 import { RouterLink } from "vue-router";
-import { ref, onMounted, TrackOpTypes } from "vue";
+import { ref } from "vue";
 import axios from "axios";
 
 const isVisible = ref(false);
 const income1 = ref(500);
 const income2 = ref(500);
 const income3 = ref(500);
+
+// Key names updated to match backend expectation
 const extraData = ref({
   monthly_contributed: null,
   debt_contributions: null,
-  emergency_contribution: null,
+  emergency_contributions: null, // Fixed: Plural 's' to match backend
   subscription_name: "",
   subscription_price: "",
   subscription_status: "",
   transaction_name: "",
-  transaction_price: "",
+  transaction_value: "", // Fixed: Updated from 'transaction_price' to match backend
   transaction_date: "",
 });
 
 const formatCurrency = (val) => {
-  const displayVal = val !== null ? val : 500; // Shows $500 baseline if untouched
+  const displayVal = val !== null ? val : 500;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -28,31 +30,47 @@ const formatCurrency = (val) => {
   }).format(displayVal);
 };
 
-function toggleSiderbar() {
+function toggleSidebar() {
   isVisible.value = !isVisible.value;
-  console.log(isVisible.value);
 }
 
 const sendData = async () => {
   try {
+    // 1. Retrieve the saved JWT token from localStorage
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      console.error("No authorization token found. Please log in first.");
+      return;
+    }
+
+    // 2. Pass the token inside the Authorization header
     const response = await axios.post(
       "https://yassinafify.pythonanywhere.com/settings",
       extraData.value,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
     );
 
+    console.log("Settings updated:", response.data);
+
+    // Reset the state upon success
     extraData.value = {
       monthly_contributed: null,
       debt_contributions: null,
-      emergency_contribution: null,
+      emergency_contributions: null,
       subscription_name: "",
       subscription_price: "",
       subscription_status: "",
       transaction_name: "",
-      transaction_price: "",
+      transaction_value: "",
       transaction_date: "",
     };
   } catch (error) {
-    console.error("Error saving data:", error);
+    console.error("Error saving data:", error.response?.data || error.message);
   }
 };
 </script>
@@ -556,6 +574,10 @@ const sendData = async () => {
     width: 100%; /* Uses full available flex space instead of breaking layout boundaries */
     max-width: 100%;
   }
+
+  .inputs input {
+    padding: 7px;
+  }
 }
 
 @media (max-width: 1024px) {
@@ -578,6 +600,10 @@ const sendData = async () => {
   .inputs {
     width: 100%;
     max-width: 100%;
+  }
+
+  .inputs input {
+    padding: 7px;
   }
 }
 
@@ -633,6 +659,7 @@ const sendData = async () => {
     width: 100%;
     max-width: 100%;
     height: 44px;
+    padding: 7px;
   }
 
   .saveContainer {
@@ -708,6 +735,7 @@ const sendData = async () => {
 
   .inputs input {
     height: 42px;
+    padding: 7px;
   }
 
   .save {
