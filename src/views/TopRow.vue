@@ -197,14 +197,22 @@ const fetchSubscriptions = async () => {
 
 const deleteSubscription = async (id) => {
   try {
+    const token = localStorage.getItem("token"); // Retrieve the JWT token
+
     const response = await axios.delete(
       `https://yassinafify.pythonanywhere.com/api/subscriptions/${id}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`, // Pass the bearer token
+        },
+      },
     );
+
     if (response.status === 200) {
       tables.value = tables.value.filter((tx) => tx.id !== id);
     }
   } catch (error) {
-    console.error("Error deleting the subscription", error);
+    console.error("Error deleting the subscription:", error);
   }
 };
 

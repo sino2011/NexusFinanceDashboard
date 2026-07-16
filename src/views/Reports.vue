@@ -400,44 +400,6 @@ const donutOptions = {
             </div>
             <p class="save">+$325/mo</p>
           </div>
-
-          <div class="Savings">
-            <h3>Savings</h3>
-            <div class="counter-row">
-              <span class="currency-symbol">$</span>
-              <div v-for="i in 6" :key="i" class="counter">
-                <div class="digit-slot">
-                  <div class="digit-strip" :id="'dig-' + i">
-                    <span>0</span><span>1</span><span>2</span><span>3</span
-                    ><span>4</span><span>5</span><span>6</span><span>7</span
-                    ><span>8</span><span>9</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <p class="target">
-              Of ${{ financialMetrics.savings_target || "0" }} Target
-            </p>
-            <div class="Pro-container">
-              <div
-                class="Pro"
-                :style="{
-                  width:
-                    financialMetrics.savings_target > 0
-                      ? Math.min(
-                          (financialMetrics.current_savings /
-                            financialMetrics.savings_target) *
-                            100,
-                          100,
-                        ) + '%'
-                      : '0%',
-                }"
-              >
-                <span v-if="saving_progress > 10"></span>
-              </div>
-            </div>
-            <p class="save">+$325/mo</p>
-          </div>
         </div>
 
         <div class="Core">

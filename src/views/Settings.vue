@@ -577,9 +577,13 @@ const sendData = async () => {
   box-shadow: rgba(99, 102, 241, 0.4) 0px 10px 40px;
 }
 
-.extrainfoSuccessInfo,
+.successExtraInfo,
 .subscriptionSuccessInfo,
 .transactionSuccessInfo {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
   color: rgb(0, 200, 83);
 }
 
