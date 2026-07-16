@@ -5,26 +5,16 @@ import { onMounted } from "vue";
 
 const isVisible = ref(false);
 const transactions = ref([]);
-const API_BASE = import.meta.env.PROD
-  ? "https://yassinafify.pythonanywhere.com"
-  : "";
-
-// Secure headers helper
-const getAuthHeaders = () => {
-  const token = localStorage.getItem("token");
-  return { headers: { Authorization: token ? `Bearer ${token}` : "" } };
-};
 
 const getData = async () => {
   try {
-    // Attached auth header
     const response = await axios.get(
-      `${API_BASE}/Transactions`,
-      getAuthHeaders(),
+      "https://yassinafify.pythonanywhere.com/Transactions",
     );
 
     transactions.value = response.data.map((tx, index) => {
       const rawDate = new Date(tx.transaction_date);
+
       const formattedDate = rawDate.toLocaleDateString("en-US", {
         weekday: "short",
         day: "2-digit",
@@ -48,10 +38,8 @@ const getData = async () => {
 
 const deleteTransaction = async (id) => {
   try {
-    // Attached auth header
     const response = await axios.delete(
-      `${API_BASE}/Transactions/${id}`,
-      getAuthHeaders(),
+      `https://yassinafify.pythonanywhere.com/Transactions/${id}`,
     );
     if (response.status === 200) {
       transactions.value = transactions.value.filter((tx) => tx.id !== id);

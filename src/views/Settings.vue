@@ -1,15 +1,12 @@
 <script setup>
 import { RouterLink } from "vue-router";
-import { ref } from "vue";
-import axios from "axios"; //  Fixed this import to pull from axios
+import { ref, onMounted, TrackOpTypes } from "vue";
+import axios from "axios";
 
 const isVisible = ref(false);
 const income1 = ref(500);
 const income2 = ref(500);
 const income3 = ref(500);
-const API_BASE = import.meta.env.PROD
-  ? "https://yassinafify.pythonanywhere.com"
-  : "";
 const extraData = ref({
   monthly_contributed: null,
   debt_contributions: null,
@@ -22,14 +19,8 @@ const extraData = ref({
   transaction_date: "",
 });
 
-// Secure headers helper
-const getAuthHeaders = () => {
-  const token = localStorage.getItem("token");
-  return { headers: { Authorization: token ? `Bearer ${token}` : "" } };
-};
-
 const formatCurrency = (val) => {
-  const displayVal = val !== null ? val : 500;
+  const displayVal = val !== null ? val : 500; // Shows $500 baseline if untouched
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -45,9 +36,8 @@ function toggleSiderbar() {
 const sendData = async () => {
   try {
     const response = await axios.post(
-      `${API_BASE}/settings`,
+      "https://yassinafify.pythonanywhere.com/settings",
       extraData.value,
-      getAuthHeaders(),
     );
 
     extraData.value = {

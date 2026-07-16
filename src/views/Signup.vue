@@ -18,11 +18,11 @@ const targetElement = ref(null);
 const users = ref([]);
 const loading = ref(true);
 const formData = ref({
-  first_name: "",
-  last_name: "",
-  date_birth: "",
-  passw: "",
-  mail: "",
+  first_name: null,
+  last_name: null,
+  date_birth: null,
+  passw: null,
+  mail: null,
   annual_income: 20000,
   savings_target: 20000,
   timeline: 12,
@@ -31,9 +31,6 @@ const formData = ref({
 });
 
 const statusMessage = ref("");
-const API_BASE = import.meta.env.PROD
-  ? "https://yassinafify.pythonanywhere.com"
-  : "";
 
 const submitData = async () => {
   if (
@@ -45,30 +42,19 @@ const submitData = async () => {
     statusMessage.value = "Please fill out all required fields.";
     return;
   }
-
-  statusMessage.value = "Saving your profile...";
+  statusMessage.value = "Savings data...";
   try {
-    const payload = new URLSearchParams();
-    payload.append("first_name", formData.value.first_name);
-    payload.append("last_name", formData.value.last_name);
-    payload.append("date_birth", formData.value.date_birth || "");
-    payload.append("passw", formData.value.passw);
-    payload.append("mail", formData.value.mail);
-    payload.append("annual_income", formData.value.annual_income);
-    payload.append("savings_target", formData.value.savings_target);
-    payload.append("timeline", formData.value.timeline);
-    payload.append("total_savings", formData.value.total_savings);
-    payload.append("emergency_fund", formData.value.emergency_fund);
+    const response = await axios.post(
+      "https://yassinafify.pythonanywhere.com/api/calculate",
+      formData.value,
+      {
+        withCredentials: true,
+      },
+    );
+    statusMessage.value = response.data.message;
 
-    const response = await axios.post(`${API_BASE}/api/calculate`, payload, {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    });
-
-    statusMessage.value = response.data.message || "Profile saved";
     localStorage.setItem("nexus_user_registered", "true");
-    localStorage.setItem("token", response.data.token || "");
-    localStorage.setItem("user_id", response.data.user_id || "");
-    router.push({ name: "Home" });
+    router.push("/Home");
 
     formData.value = {
       first_name: "",

@@ -1,196 +1,49 @@
-import os
-from datetime import date
-from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 import pymysql
+from datetime import date 
 from dateutil.relativedelta import relativedelta
+import os
+from dotenv import load_dotenv
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 load_dotenv()
 
-# Fixed trailing typo 'a' at the end
 DB_HOST = os.getenv('DB_HOST', 'localhost')
 DB_USER = os.getenv('DB_USER', 'root')
 DB_PASSWORD = os.getenv('DB_PASSWORD', 'Yassin2011')
 DB_NAME = os.getenv('DB_NAME', 'nexusfinancedashboard')
 
 app = Flask(__name__)
+CORS(app, origins=["*"])
 
-# Core CORS setup (handles preflights automatically)
-CORS(
-    app,
-    resources={r"/*": {"origins": ["https://sino2011.github.io", "http://localhost:5173"]}},
-    allow_headers=["Content-Type", "Authorization"],
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    supports_credentials=True
-)
-
-app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "yassin2011")
-jwt = JWTManager(app)
 db_config = {
-    'host': DB_HOST,
-    'user': DB_USER,
-    'password': DB_PASSWORD,
-    'database': DB_NAME,
+    'host': 'localhost',
+    'user': 'root',
+    'password': 'Yassin2011',
+    'database': 'nexusfinancedashboard',
     'cursorclass': pymysql.cursors.DictCursor
 }
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["500 per day", "75 per hour"],
+    storage_uri="memory://"
+)
 
 def get_db_connection():
     return pymysql.connect(**db_config)
 
-
-def get_request_data():
-    if request.is_json:
-        return request.get_json(silent=True) or {}
-
-    form_data = request.form.to_dict()
-    if form_data:
-        return form_data
-
-    try:
-        return request.get_json(silent=True) or {}
-    except Exception:
-        return {}
-
-
-def parse_user_id(identity):
-    try:
-        return int(identity)
-    except (ValueError, TypeError):
-        return None
-
-
-def to_float(val, default=0.0):
-    try:
-        if val is None or str(val).strip() == "":
-            return default
-        return float(val)
-    except (ValueError, TypeError):
-        return default
-
-
-def to_int(val, default=0):
-    try:
-        if val is None or str(val).strip() == "":
-            return default
-        return int(float(val))
-    except (ValueError, TypeError):
-        return default
-
-
-def build_profile_from_calc(calc_result):
-    if not calc_result:
-        return {
-            "monthly_savings": 0,
-            "savings_rate": 0,
-            "balance_36mo": 0,
-            "completion_date": str(date.today()),
-            "total_contributed": 0,
-            "time_to_goal": 12,
-            "savings_target": 0,
-        }
-
-    savings_target = to_float(calc_result.get("savings_target"))
-    timeline = to_int(calc_result.get("timeline"), 12)
-    if timeline <= 0:
-        timeline = 12
-
-    annual_income = to_float(calc_result.get("annual_income"), 1)
-    if annual_income <= 0:
-        annual_income = 1
-
-    monthly_savings = savings_target / timeline
-    savings_rate = (monthly_savings / (annual_income / 12)) * 100
-    balance_36mo = monthly_savings * 36
-    completion_date = calc_result.get("completion_date")
-    if completion_date:
-        completion_date = str(completion_date)
-    else:
-        completion_date = str(date.today() + relativedelta(months=timeline))
-
-    return {
-        "monthly_savings": round(monthly_savings, 2),
-        "savings_rate": round(savings_rate, 1),
-        "balance_36mo": round(balance_36mo, 2),
-        "completion_date": completion_date,
-        "total_contributed": round(max(0.0, annual_income - savings_target), 2),
-        "time_to_goal": timeline,
-        "savings_target": savings_target,
-    }
-
-
-def initialize_database():
-    connection = get_db_connection()
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS userinfo (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    first_name VARCHAR(100),
-                    last_name VARCHAR(100),
-                    date_birth DATE,
-                    pass VARCHAR(255),
-                    email VARCHAR(255) UNIQUE
-                )
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS calculation_table (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    annual_income DECIMAL(12,2),
-                    savings_target DECIMAL(12,2),
-                    timeline INT,
-                    total_savings DECIMAL(12,2),
-                    emergency_fund DECIMAL(12,2),
-                    completion_date DATE,
-                    user_id INT
-                )
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS extradata (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    monthly_contributed DECIMAL(12,2),
-                    debt_contributions DECIMAL(12,2),
-                    emergency_contribtuions DECIMAL(12,2),
-                    user_id INT
-                )
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS subscription_ledger (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    subscription_name VARCHAR(255),
-                    subscription_price DECIMAL(12,2),
-                    subscriptions_status VARCHAR(50),
-                    user_id INT
-                )
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS transaction_ledger (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    transaction_name VARCHAR(255),
-                    transaction_value DECIMAL(12,2),
-                    transaction_date DATE,
-                    user_id INT
-                )
-            """)
-        connection.commit()
-    except Exception as e:
-        connection.rollback()
-        print(f"Database initialization failed: {str(e)}")
-    finally:
-        connection.close()
-
-
-initialize_database()
-
 @app.route("/login", methods=["POST"])
+@limiter.limit("10 per minute")
 def login():
     connection = None
     try:
-        data = get_request_data()
-
-        email = data.get('email') or data.get('mail')
-        password = data.get('password') or data.get('passw') or data.get('pass')
+        data = request.get_json()
+        email = data.get('email')
+        password = data.get("password")
         if not email or not password:
             return jsonify({"error": "Email and password required"}), 400
 
@@ -201,28 +54,9 @@ def login():
             user = cursor.fetchone()
 
             if user and user['pass'] == password:
-                access_token = create_access_token(identity=str(user['id']))
-                cursor.execute(
-                    """
-                    SELECT annual_income, savings_target, timeline, total_savings,
-                           emergency_fund, completion_date
-                    FROM calculation_table
-                    WHERE user_id = %s
-                    ORDER BY id DESC
-                    LIMIT 1
-                    """,
-                    (user["id"],),
-                )
-                calc_result = cursor.fetchone()
-                profile = build_profile_from_calc(calc_result)
-                base_savings = to_float(calc_result.get("total_savings")) if calc_result else 0.0
-
                 return jsonify({
                     "message": "Login successful",
-                    "token": access_token,
-                    "user_id": user['id'],
-                    "profile": profile,
-                    "base_savings": base_savings,
+                    "user_id": user['id']
                 }), 200
 
             return jsonify({"error": "Invalid email or password"}), 401
@@ -237,166 +71,134 @@ def login():
 
 @app.route("/api/calculate", methods=['POST'])
 def save_calculations():
-    data = get_request_data()
+    data = request.get_json()
 
     if not data:
         return jsonify({"error": "Missing request body"}), 400
 
+    annual_income = data.get('annual_income')
+    savings_target = data.get('savings_target')
+    timeline = int(data.get('timeline') or 0)
+    total_savings = data.get('total_savings')
+    emergency_fund = data.get('emergency_fund')
     first_name = data.get('first_name')
     last_name = data.get('last_name')
     date_birth = data.get('date_birth')
-    passw = data.get('passw') or data.get('password')
-    email = data.get('mail') or data.get('email')
-
-    if not first_name or not last_name or not email or not passw:
-        return jsonify({"error": "First name, last name, email, and password are required"}), 400
-
-    if not date_birth or str(date_birth).strip() == "":
-        date_birth = None
-
-    annual_income = to_float(data.get('annual_income'))
-    savings_target = to_float(data.get('savings_target'))
-    timeline = to_int(data.get('timeline'), 12)
-    total_savings = to_float(data.get('total_savings'))
-    emergency_fund = to_float(data.get('emergency_fund'))
-
-    if timeline <= 0:
-        timeline = 12
-    if annual_income <= 0 or savings_target <= 0:
-        return jsonify({"error": "Annual income and savings target must be greater than zero"}), 400
+    passw = data.get('passw')
+    email = data.get('mail')
 
     calculated_completion = date.today() + relativedelta(months=timeline)
+
     connection = get_db_connection()
     try:
         with connection.cursor() as cursor:
             user_sql = """
-                INSERT INTO userinfo (first_name, last_name, date_birth, pass, email)
+                INSERT INTO userinfo
+                (first_name, last_name, date_birth, pass, email)
                 VALUES(%s, %s, %s, %s, %s)
             """
             cursor.execute(user_sql, (first_name, last_name, date_birth, passw, email))
-            user_id = int(cursor.lastrowid)
-
+            user_id = cursor.lastrowid
             calc_sql = """
-                INSERT INTO calculation_table (annual_income, savings_target, timeline, total_savings, emergency_fund, completion_date, user_id)
+                INSERT INTO calculation_table
+                (annual_income, savings_target, timeline, total_savings, emergency_fund, completion_date, user_id)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
+            
+            # This passes user_id into the user_id column, leaving the 'id' column to auto-increment safely!
             cursor.execute(calc_sql, (annual_income, savings_target, timeline, total_savings, emergency_fund, calculated_completion, user_id))
-
+            
         connection.commit()
-        access_token = create_access_token(identity=str(user_id))
-        calc_row = {
-            "annual_income": annual_income,
-            "savings_target": savings_target,
-            "timeline": timeline,
-            "total_savings": total_savings,
-            "emergency_fund": emergency_fund,
-            "completion_date": calculated_completion,
-        }
-        profile = build_profile_from_calc(calc_row)
-
-        return jsonify({
-            "message": "Profile and Calculation saved successfully",
-            "token": access_token,
-            "user_id": user_id,
-            "profile": profile,
-            "base_savings": total_savings,
-        }), 201
-
-    except pymysql.err.IntegrityError:
-        connection.rollback()
-        return jsonify({"error": "Email already registered. Please login instead."}), 409
+        return jsonify({"message": "Profile and Calculation saved successfully"}), 201
+    
     except Exception as e:
         connection.rollback()
-        print(f"Database insertion failed: {str(e)}")
+        # Add a print statement here so you can trace errors directly in your terminal log
+        print(f"Database insertion failed: {str(e)}") 
         return jsonify({"error": str(e)}), 500
     finally:
-        connection.close()
-
+        connection.close()  # Always explicitly close the connection when done
 @app.route("/home", methods=['GET'])
-@jwt_required()
-def fetch_info():
-    user_id = get_jwt_identity()
-    try:
-        user_id = int(user_id)
-    except (ValueError, TypeError):
-        return jsonify({"error": "Invalid token identity structure"}), 400
-
+def fetch_info():   
     connection = get_db_connection()
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT total_savings, savings_target, timeline, annual_income, completion_date FROM calculation_table WHERE user_id = %s ORDER BY id DESC LIMIT 1", (user_id,))
+            cursor.execute("SELECT total_savings, savings_target, timeline, annual_income, completion_date FROM calculation_table ORDER BY id DESC LIMIT 1")
             calc_result = cursor.fetchone()
+            
+            cursor.execute("SELECT monthly_contributed, debt_contributions, emergency_contribtuions FROM extradata ORDER BY id ASC")
+            extra_results = cursor.fetchall()
 
-            cursor.execute("SELECT monthly_contributed, debt_contributions, emergency_contribtuions FROM extradata WHERE user_id = %s ORDER BY id ASC", (user_id,))
-            extra_results = cursor.fetchall() or []
-
-            cursor.execute("SELECT SUM(subscription_price) as total_subs FROM subscription_ledger WHERE user_id = %s", (user_id,))
+            cursor.execute("SELECT SUM(subscription_price) as total_subs FROM subscription_ledger")
             sub_result = cursor.fetchone()
-
-            total_subscription = 0.0
-            if sub_result and sub_result.get('total_subs') is not None:
-                total_subscription = float(sub_result['total_subs'])
+            total_subscription = float(sub_result.get('total_subs') or 0) if sub_result else 0
 
             cursor.execute("""
                     SELECT DATE_FORMAT(transaction_date, '%M') as month_name, SUM(transaction_value) as total_spent
                     FROM transaction_ledger
-                    WHERE user_id = %s AND transaction_date IS NOT NULL
                     GROUP BY DATE_FORMAT(transaction_date, '%M'), MONTH(transaction_date)
                     ORDER BY MONTH(transaction_date) ASC
-            """, (user_id,))
-            expense_results = cursor.fetchall() or []
+            """)
+            expense_results = cursor.fetchall()
 
+            base_savings = float(calc_result.get('total_savings') or 0) if calc_result else 0
+            
+            # Defensive check if no registration calculation row exists yet
             if not calc_result:
                 return jsonify({
                     "profile": {
-                        "monthly_savings": 0, "savings_rate": 0, "balance_36mo": 0,
-                        "completion_date": str(date.today()), "total_contributed": 0,
-                        "time_to_goal": 12, "savings_target": 1000
+                        "monthly_savings": 0,
+                        "savings_rate": 0,
+                        "balance_36mo": 0,
+                        "completion_date": str(date.today()),
+                        "total_contributed": 0,
+                        "time_to_goal": 12, # safe default
+                        "savings_target": 1000 # safe default
                     },
-                    "base_savings": 0, "savings_history": [], "debt": [], "monthly_averages_chart": [0] * 12
+                    "base_savings": 0,
+                    "savings_history": [],
+                    "debt": [],
+                    "monthly_averages_chart": [0] * 12
                 }), 200
-
-            base_savings = float(calc_result.get('total_savings') or 0)
+                
             savings_target = float(calc_result.get('savings_target') or 0)
-
             timeline = int(calc_result.get('timeline') or 12)
-            if timeline <= 0:
-                timeline = 12
-
+            if timeline <= 0: 
+                timeline = 12  # Avoid division by zero bugs
             annual_income = float(calc_result.get('annual_income') or 1)
-            if annual_income <= 0:
+            if annual_income <= 0: 
                 annual_income = 1
-
+            
             monthly_savings = savings_target / timeline
             savings_rate = (monthly_savings / (annual_income / 12)) * 100
             balance_36mo = monthly_savings * 36
-            completion_date = str(calc_result.get('completion_date')) if calc_result.get('completion_date') else str(date.today() + relativedelta(months=timeline))
-            total_contributed = max(0.0, annual_income - savings_target)
+            
+            if calc_result.get('completion_date'):
+                completion_date = str(calc_result.get('completion_date'))
+            else:
+                completion_date = str(date.today() + relativedelta(months=timeline))
+                
+            total_contributed = annual_income - savings_target
             timetogoal = timeline
 
-            history = [int(float(row.get('monthly_contributed') or 0)) for row in extra_results]
-            debt_history = [int(float(row.get('debt_contributions') or 0)) for row in extra_results]
+            history = [int(row.get('monthly_contributed') or 0) for row in extra_results]
+            debt_history = [int(row.get('debt_contributions') or 0) for row in extra_results]
 
             months_labels = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-            monthly_averages_chart = [0.0] * 12
-
-            expenses_by_month = {}
-            for row in expense_results:
-                if row and row.get('month_name'):
-                    m_name = str(row['month_name']).strip()
-                    expenses_by_month[m_name] = float(row.get('total_spent') or 0)
+            monthly_averages_chart = [0] * 12
+            expenses_by_month = {row['month_name']: float(row['total_spent'] or 0) for row in expense_results}
 
             for index, row in enumerate(extra_results):
                 if index >= 12:
                     break
 
-                m_cont = float(row.get('monthly_contributed') if row.get('monthly_contributed') is not None else 0)
-                d_cont = float(row.get('debt_contributions') if row.get('debt_contributions') is not None else 0)
-                e_cont = float(row.get('emergency_contribtuions') if row.get('emergency_contribtuions') is not None else 0)
-
+                m_cont = float(row.get('monthly_contributed') or 0)
+                d_cont = float(row.get('debt_contributions') or 0)
+                e_cont = float(row.get('emergency_contribtuions') or 0)
                 gross_pool = m_cont + d_cont + e_cont
+
                 current_month_name = months_labels[index]
-                var_expense = float(expenses_by_month.get(current_month_name, 0.0))
+                var_expense = expenses_by_month.get(current_month_name, 0)
 
                 net_surplus = gross_pool - (var_expense + total_subscription)
                 monthly_averages_chart[index] = round(net_surplus, 2)
@@ -407,7 +209,7 @@ def fetch_info():
                     "savings_rate": round(savings_rate, 1),
                     "balance_36mo": round(balance_36mo, 2),
                     "completion_date": completion_date,
-                    "total_contributed": round(total_contributed, 2),
+                    "total_contributed": total_contributed,
                     "time_to_goal": timetogoal,
                     "savings_target": savings_target
                 },
@@ -416,17 +218,17 @@ def fetch_info():
                 "debt": debt_history,
                 "monthly_averages_chart": monthly_averages_chart
             }), 200
+
     except Exception as e:
-        print(f"CRITICAL ERROR compile home payload: {str(e)}")
+        print(f"Failed to fetch home metrics data: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
         connection.close()
-
+    
 @app.route("/settings", methods=["POST"])
-@jwt_required()
+@limiter.limit("10 per minute")
 def extra_data():
-    user_id = get_jwt_identity()
-    data = get_request_data()
+    data = request.get_json() or {}
 
     def clean(key, is_numeric=False):
         val = data.get(key)
@@ -434,14 +236,17 @@ def extra_data():
             return 0 if is_numeric else None
         return val
 
-    monthly_cont = clean('monthly_contributed', is_numeric=True)
-    debt_cont = clean('debt_contributions', is_numeric=True)
-    emergency_cont = clean('emergency_contribution', is_numeric=True)
-    subscription_name = clean('subscription_name')
-    subscription_price = clean('subscription_price', is_numeric=True)
-    subscription_status = clean('subscription_status')
-    transaction_name = clean('transaction_name')
-    transaction_value = clean('transaction_price', is_numeric=True)
+    # 1. Grab your metric contributions (will be 0 if null/untouched was sent)
+    monthly_cont = clean('monthly_contributed', is_numeric=True) 
+    debt_cont = clean('debt_contributions', is_numeric=True) 
+    emergency_cont = clean('emergency_contribution', is_numeric=True) 
+    
+    # 2. Grab transactional items
+    subscription_name = clean('subscription_name') 
+    subscription_price = clean('subscription_price', is_numeric=True) 
+    subscription_status = clean('subscription_status') 
+    transaction_name = clean('transaction_name') 
+    transaction_value = clean('transaction_price', is_numeric=True) 
     transaction_date = clean('transaction_date')
 
     if not transaction_date or str(transaction_date).strip() == "":
@@ -450,26 +255,29 @@ def extra_data():
     connection = get_db_connection()
     try:
         with connection.cursor() as cursor:
+            # ONLY log to extradata if at least one metric is strictly greater than 0
             if monthly_cont > 0 or debt_cont > 0 or emergency_cont > 0:
                 metrics_sql = """
-                    INSERT INTO extradata (monthly_contributed, debt_contributions, emergency_contribtuions, user_id)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO extradata (monthly_contributed, debt_contributions, emergency_contribtuions) 
+                    VALUES (%s, %s, %s)
                 """
-                cursor.execute(metrics_sql, (monthly_cont, debt_cont, emergency_cont, user_id))
+                cursor.execute(metrics_sql, (monthly_cont, debt_cont, emergency_cont))
 
+            # If a single transaction was added, send it to its own ledger
             if transaction_name:
                 tx_sql = """
-                    INSERT INTO transaction_ledger (transaction_name, transaction_value, transaction_date, user_id)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO transaction_ledger (transaction_name, transaction_value, transaction_date) 
+                    VALUES (%s, %s, %s)
                 """
-                cursor.execute(tx_sql, (transaction_name, transaction_value, transaction_date, user_id))
+                cursor.execute(tx_sql, (transaction_name, transaction_value, transaction_date))
 
+            # If a single subscription was added, send it to its own ledger
             if subscription_name:
                 sub_sql = """
-                    INSERT INTO subscription_ledger (subscription_name, subscription_price, subscriptions_status, user_id)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO subscription_ledger (subscription_name, subscription_price, subscriptions_status) 
+                    VALUES (%s, %s, %s)
                 """
-                cursor.execute(sub_sql, (subscription_name, subscription_price, subscription_status, user_id))
+                cursor.execute(sub_sql, (subscription_name, subscription_price, subscription_status))
 
         connection.commit()
         return jsonify({"message": "All data processed successfully"}), 201
@@ -480,102 +288,95 @@ def extra_data():
         connection.close()
 
 @app.route("/Transactions", methods=['GET'])
-@jwt_required()
 def fetch_trans():
-    user_id = get_jwt_identity()
     connection = get_db_connection()
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id, transaction_name, transaction_value, transaction_date FROM transaction_ledger WHERE user_id = %s ORDER BY id DESC", (user_id,))
+            cursor.execute("SELECT id, transaction_name, transaction_value, transaction_date FROM transaction_ledger ORDER BY id DESC")
             return jsonify(cursor.fetchall()), 200
-    finally:
+    finally: 
         connection.close()
 
 @app.route("/Transactions/<int:tx_id>", methods=['DELETE'])
-@jwt_required()
 def delete_trans(tx_id):
-    user_id = get_jwt_identity()
     connection = get_db_connection()
     try:
         with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM transaction_ledger WHERE id = %s AND user_id = %s", (tx_id, user_id))
+            cursor.execute("DELETE FROM transaction_ledger WHERE id = %s", (tx_id,))
             connection.commit()
         return jsonify({"message": "Deleted transaction"}), 200
-    finally:
+    finally: 
         connection.close()
 
 @app.route("/api/subscriptions", methods=['GET'])
-@jwt_required()
 def fetch_subscription():
-    user_id = get_jwt_identity()
     connection = get_db_connection()
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id, subscription_name, subscription_price, subscriptions_status FROM subscription_ledger WHERE user_id = %s ORDER BY id DESC", (user_id,))
+            cursor.execute("SELECT id, subscription_name, subscription_price, subscriptions_status FROM subscription_ledger ORDER BY id DESC")
             return jsonify(cursor.fetchall()), 200
-    finally:
+    finally: 
         connection.close()
 
 @app.route("/api/subscriptions/<int:sub_id>", methods=['DELETE'])
-@jwt_required()
 def delete_subscription(sub_id):
-    user_id = get_jwt_identity()
     connection = get_db_connection()
     try:
         with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM subscription_ledger WHERE id = %s AND user_id = %s", (sub_id, user_id))
+            cursor.execute("DELETE FROM subscription_ledger WHERE id = %s", (sub_id,))
             connection.commit()
         return jsonify({"message": "Deleted subscription"}), 200
-    finally:
+    finally: 
         connection.close()
 
 @app.route("/Reports", methods=["GET"])
-@jwt_required()
 def sendInfo():
-    user_id = get_jwt_identity()
     connection = get_db_connection()
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT savings_target, total_savings, emergency_fund FROM calculation_table WHERE user_id = %s ORDER BY id DESC LIMIT 1", (user_id,))
+            # 1. Get baseline targets and configurations
+            cursor.execute("SELECT savings_target, total_savings, emergency_fund FROM calculation_table ORDER BY id DESC LIMIT 1")
             calc_row = cursor.fetchone()
-
-            cursor.execute("SELECT monthly_contributed, emergency_contribtuions FROM extradata WHERE user_id = %s ORDER BY id ASC", (user_id,))
+            
+            cursor.execute("SELECT monthly_contributed, emergency_contribtuions FROM extradata ORDER BY id ASC")
             extra_rows = cursor.fetchall()
 
-            cursor.execute("SELECT SUM(subscription_price) as total_subs FROM subscription_ledger WHERE user_id = %s", (user_id,))
+            # 2. Query for subscription costs to accurately reflect fixed costs if needed
+            cursor.execute("SELECT SUM(subscription_price) as total_subs FROM subscription_ledger")
             sub_result = cursor.fetchone()
-            total_subs = float(sub_result.get('total_subs') or 0) if sub_result and sub_result.get('total_subs') else 0.0
+            total_subs = float(sub_result.get('total_subs') or 0) if sub_result else 0
 
+            # 3. Query transaction totals grouped by month for the variable costs line
             cursor.execute("""
                 SELECT DATE_FORMAT(transaction_date, '%M') as month_name, SUM(transaction_value) as total_spent
                 FROM transaction_ledger
-                WHERE user_id = %s
                 GROUP BY DATE_FORMAT(transaction_date, '%M'), MONTH(transaction_date)
                 ORDER BY MONTH(transaction_date) ASC
-            """, (user_id,))
+            """)
             expense_results = cursor.fetchall()
 
+        # Build dynamic lists for the deep dive chart visualization
         months_labels = ["July", "August", "September", "October", "November", "December"]
-
-        expenses_by_month = {}
-        if expense_results:
-            for row in expense_results:
-                if row and row.get('month_name'):
-                    expenses_by_month[row['month_name']] = float(row.get('total_spent') or 0)
-
-        fixed_costs_timeline = [2200 for _ in months_labels]
-        variable_costs_timeline = [int(float(expenses_by_month.get(m, 0))) for m in months_labels]
-
+        
+        # Build dictionary from database tracking results
+        expenses_by_month = {row['month_name']: float(row['total_spent'] or 0) for row in expense_results}
+        
+        # Map values or fall back to your dashboard default template rules smoothly
+        fixed_costs_timeline = [2200 for _ in months_labels]  # Base fixed target line
+        variable_costs_timeline = [int(expenses_by_month.get(m, 0)) for m in months_labels]
+        
+        # If no custom data is generated yet, supply your frontend template fallback values
         if all(v == 0 for v in variable_costs_timeline):
             variable_costs_timeline = [750, 800, 1450, 1220, 920, 1720]
 
         if calc_row:
             payload = {
-                "savings_target": float(calc_row.get("savings_target") or 0),
-                "base_savings": int(float(calc_row.get("total_savings") or 0)),
-                "emergency_target": int(float(calc_row.get("emergency_fund") or 0)),
-                "savings_history": [int(float(r.get("monthly_contributed") or 0)) for r in extra_rows],
-                "emergency_history": [int(float(r.get("emergency_contribtuions") or 0)) for r in extra_rows],
+                "savings_target": calc_row.get("savings_target", 0),
+                "base_savings": int(calc_row.get("total_savings", 0)),
+                "emergency_target": int(calc_row.get("emergency_fund", 0)),
+                "savings_history": [int(r.get("monthly_contributed", 0)) for r in extra_rows],
+                "emergency_history": [int(r.get("emergency_contribtuions", 0)) for r in extra_rows],
+                # Add this key back in so Vue can read it!
                 "deep_dive": {
                     "months": months_labels,
                     "fixed_costs": fixed_costs_timeline,
@@ -584,9 +385,15 @@ def sendInfo():
             }
         else:
             payload = {
-                "savings_target": 0, "base_savings": 0, "emergency_target": 0, "savings_history": [], "emergency_history": [],
+                "savings_target": 0, 
+                "base_savings": 0, 
+                "emergency_target": 0, 
+                "savings_history": [], 
+                "emergency_history": [],
                 "deep_dive": {
-                    "months": months_labels, "fixed_costs": [2200] * 6, "variable_costs": [750, 800, 1450, 1220, 920, 1720]
+                    "months": months_labels,
+                    "fixed_costs": [2200] * 6,
+                    "variable_costs": [750, 800, 1450, 1220, 920, 1720]
                 }
             }
 
