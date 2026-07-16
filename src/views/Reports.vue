@@ -66,17 +66,23 @@ function toggleSiderbar() {
 
 const getData = async () => {
   try {
+    // 1. Retrieve the token from localStorage (or wherever you store it upon login)
+    const token = localStorage.getItem("token"); // or sessionStorage.getItem("token")
+
+    // 2. Pass the authorization header inside the request config
     const response = await axios.get(
       "https://yassinafify.pythonanywhere.com/Reports",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
     );
 
-    // Log this so you can see exactly what the backend is sending in your browser console!
     console.log("Flask payload received:", response.data);
-
     financialMetrics.value = response.data;
 
     // Safe assignment using optional chaining (?.)
-    // If response.data.deep_dive doesn't exist, it falls back to your local mock array instead of crashing.
     MidlleRowGraph.value.datasets[0].data =
       response.data?.deep_dive?.fixed_costs ||
       financialMetrics.value.deep_dive.fixed_costs;
@@ -1495,14 +1501,6 @@ svg {
 }
 
 @media (max-width: 480px) {
-  .content-view {
-    /* padding: 0 10px 20px; */
-  }
-
-  .mainContainer {
-    /* padding: 56px 10px 24px; */
-  }
-
   .titles h1 {
     font-size: 1.45rem;
   }

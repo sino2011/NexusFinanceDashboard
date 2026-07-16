@@ -7,6 +7,11 @@ const isVisible = ref(false);
 const income1 = ref(500);
 const income2 = ref(500);
 const income3 = ref(500);
+const extrainfoSuccessMsg = document.getElementById("successExtraInfo");
+const subscriptionSuccessMsg = document.getElementById(
+  "subscriptionSuccessInfo",
+);
+const transactionSuccessMsg = document.getElementById("transactionSuccessInfo");
 
 const extraData = ref({
   monthly_contributed: null,
@@ -28,10 +33,6 @@ const formatCurrency = (val) => {
     maximumFractionDigits: 0,
   }).format(displayVal);
 };
-
-function toggleSidebar() {
-  isVisible.value = !isVisible.value;
-}
 
 const sendData = async () => {
   try {
@@ -205,6 +206,9 @@ const sendData = async () => {
             <p>$7,500</p>
           </div>
         </div>
+        <p id="successExtraInfo" class="successExtraInfo">
+          Success view your updated info in the home page
+        </p>
       </div>
     </div>
 
@@ -231,6 +235,9 @@ const sendData = async () => {
           <!-- <button type="submit">Add Subscription</button> -->
         </div>
       </div>
+      <p id="subscriptionSuccessInfo" class="subscriptionSuccessInfo">
+        Success view your subscription in the home page
+      </p>
     </div>
     <div class="subs">
       <h3>Add Transactions</h3>
@@ -254,6 +261,9 @@ const sendData = async () => {
           />
           <!-- <button type="submit">Add Transaction</button> -->
         </div>
+      </div>
+      <div id="transactionSuccessInfo" class="transactionSuccessInfo">
+        Success view your transaction in the transactions page
       </div>
     </div>
     <div class="saveContainer">
@@ -553,6 +563,13 @@ const sendData = async () => {
   box-shadow: rgba(99, 102, 241, 0.4) 0px 10px 40px;
 }
 
+.extrainfoSuccessInfo,
+.subscriptionSuccessInfo,
+.transactionSuccessInfo {
+  display: none;
+  color: rgb(0, 200, 83);
+}
+
 /* ==========================================================================
        RESPONSIVE BREAKPOINTS
        ========================================================================== */
@@ -656,7 +673,7 @@ const sendData = async () => {
   }
 
   .bot {
-    flex-direction: column;
+    flex-direction: row;
     align-items: flex-start;
     gap: 6px;
   }

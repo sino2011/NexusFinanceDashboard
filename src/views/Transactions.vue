@@ -8,11 +8,20 @@ const transactions = ref([]);
 
 const getData = async () => {
   try {
+    // 1. Get the token from storage
+    const token = localStorage.getItem("token");
+
+    // 2. Pass the token in the headers
     const response = await axios.get(
       "https://yassinafify.pythonanywhere.com/Transactions",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
     );
 
-    transactions.value = response.data.map((tx, index) => {
+    transactions.value = response.data.map((tx) => {
       const rawDate = new Date(tx.transaction_date);
 
       const formattedDate = rawDate.toLocaleDateString("en-US", {
@@ -38,8 +47,17 @@ const getData = async () => {
 
 const deleteTransaction = async (id) => {
   try {
+    // 1. Get the token from storage
+    const token = localStorage.getItem("token");
+
+    // 2. Pass the token in the headers for the DELETE request
     const response = await axios.delete(
       `https://yassinafify.pythonanywhere.com/Transactions/${id}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
     );
     if (response.status === 200) {
       transactions.value = transactions.value.filter((tx) => tx.id !== id);
