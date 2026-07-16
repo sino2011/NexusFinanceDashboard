@@ -79,9 +79,15 @@ const getData = async () => {
     );
 
     console.log("Flask payload received:", response.data);
-    financialMetrics.value = response.data;
 
-    // Safe assignment using optional chaining (?.)
+    // Ensure we capture target metrics safely with fallbacks
+    financialMetrics.value = {
+      ...response.data,
+      emergency_target: response.data?.emergency_target || 15000, // Replace 15000 with your preferred default fallback
+      savings_target: response.data?.savings_target || 50000,
+    };
+
+    // Update graph datasets
     MidlleRowGraph.value.datasets[0].data =
       response.data?.deep_dive?.fixed_costs ||
       financialMetrics.value.deep_dive.fixed_costs;
@@ -90,7 +96,6 @@ const getData = async () => {
       response.data?.deep_dive?.variable_costs ||
       financialMetrics.value.deep_dive.variable_costs;
 
-    // Trigger chart reactivity refresh
     MidlleRowGraph.value = { ...MidlleRowGraph.value };
   } catch (error) {
     console.error("La rbna m3ak baa", error);
@@ -124,8 +129,35 @@ function updateEmergencyDisplay(value) {
 }
 
 onMounted(async () => {
-  await getData();
+  await getData(); // Wait for Flask to respond first!
 
+  // --- Start counter animations using the freshly updated data ---
+  const emergencyHistory = financialMetrics.value.emergency_history || [];
+  const totalEmergency = emergencyHistory.reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+
+  // Set current reactive value
+  financialMetrics.value.emergency_current = totalEmergency;
+
+  const baseSavings = financialMetrics.value.base_savings || 0;
+  const savingsHistory = financialMetrics.value.savings_history || [];
+  const totalExtraSavings = savingsHistory.reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+  const finalSavingsTotal = baseSavings + totalExtraSavings;
+
+  financialMetrics.value.current_savings = finalSavingsTotal;
+
+  // Stagger the UI visual text roll to match your layout transition
+  setTimeout(() => {
+    updateEmergencyDisplay(totalEmergency);
+    updateSavingsDisplay(finalSavingsTotal);
+  }, 400);
+
+  // Intersection Observer configs...
   const observerOptions = {
     threshold: [0.4, 0.2],
     rootMargin: "0px 0px -10% 0px",
@@ -154,35 +186,6 @@ onMounted(async () => {
 
   if (middleRowRef.value) observer.observe(middleRowRef.value);
   if (tableRowRef.value) observer.observe(tableRowRef.value);
-
-  // 3. Staggered Timeline Tickers
-  setTimeout(() => {
-    let totalEmergency = 0;
-    updateEmergencyDisplay(totalEmergency);
-
-    const emergencyHistory = financialMetrics.value.emergency_history || [];
-    totalEmergency = emergencyHistory.reduce((sum, value) => sum + value, 0);
-
-    setTimeout(() => {
-      updateEmergencyDisplay(totalEmergency);
-      financialMetrics.value.emergency_current = totalEmergency;
-    }, 100);
-
-    const baseSavings = financialMetrics.value.base_savings || 0;
-    updateSavingsDisplay(baseSavings);
-
-    const savingsHistory = financialMetrics.value.savings_history || [];
-    const totalExtraSavings = savingsHistory.reduce(
-      (sum, value) => sum + value,
-      0,
-    );
-    const finalSavingsTotal = baseSavings + totalExtraSavings;
-
-    setTimeout(() => {
-      updateSavingsDisplay(finalSavingsTotal);
-      financialMetrics.value.current_savings = finalSavingsTotal;
-    }, 100);
-  }, 1700);
 });
 
 // --- CHART PLOT LOGIC CONFS ---
