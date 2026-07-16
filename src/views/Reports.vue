@@ -2,7 +2,7 @@
 import { Bar } from "vue-chartjs";
 import { Line } from "vue-chartjs";
 import { Doughnut } from "vue-chartjs";
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import {
   Chart as ChartJS,
   Title,

@@ -580,7 +580,6 @@ const sendData = async () => {
 .extrainfoSuccessInfo,
 .subscriptionSuccessInfo,
 .transactionSuccessInfo {
-  display: none;
   color: rgb(0, 200, 83);
 }
 
