@@ -174,12 +174,12 @@ const sendData = async () => {
           <div class="top">
             <p>Emergency Contributions</p>
             <span class="value-display">{{
-              formatCurrency(extraData.emergency_contribution)
+              formatCurrency(extraData.emergency_contributions)
             }}</span>
           </div>
           <div class="mid">
             <input
-              v-model.number="extraData.emergency_contribution"
+              v-model.number="extraData.emergency_contributions"
               type="range"
               min="500"
               max="7500"
