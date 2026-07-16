@@ -44,13 +44,14 @@ const isMiddleRowIntersecting = ref(false);
 const isTableRowIntersecting = ref(false);
 const tableRowRef = ref(null);
 const middleRowRef = ref(null);
-const emergencyTarget = ref([]);
 
 const financialMetrics = ref({
   savings_target: 0,
   base_savings: 0,
   current_savings: 0,
   emergency_fund: 0,
+  emergency_target: 0, // Added default baseline
+  emergency_current: 0, // Added default baseline
   savings_history: [],
   emergency_history: [],
   deep_dive: {
@@ -66,10 +67,8 @@ function toggleSiderbar() {
 
 const getData = async () => {
   try {
-    // 1. Retrieve the token from localStorage (or wherever you store it upon login)
-    const token = localStorage.getItem("token"); // or sessionStorage.getItem("token")
+    const token = localStorage.getItem("token");
 
-    // 2. Pass the authorization header inside the request config
     const response = await axios.get(
       "https://yassinafify.pythonanywhere.com/Reports",
       {
@@ -125,10 +124,8 @@ function updateEmergencyDisplay(value) {
 }
 
 onMounted(async () => {
-  // 1. Wait for Flask timeline payload
   await getData();
 
-  // 2. Set up Intersection Observers
   const observerOptions = {
     threshold: [0.4, 0.2],
     rootMargin: "0px 0px -10% 0px",
@@ -172,7 +169,7 @@ onMounted(async () => {
     }, 100);
 
     const baseSavings = financialMetrics.value.base_savings || 0;
-    updateSavingsDisplay(baseSavings); // Visual initialization to your signup baseline
+    updateSavingsDisplay(baseSavings);
 
     const savingsHistory = financialMetrics.value.savings_history || [];
     const totalExtraSavings = savingsHistory.reduce(
@@ -181,13 +178,12 @@ onMounted(async () => {
     );
     const finalSavingsTotal = baseSavings + totalExtraSavings;
 
-    // Trigger a single roll straight from baseline to final total
     setTimeout(() => {
       updateSavingsDisplay(finalSavingsTotal);
       financialMetrics.value.current_savings = finalSavingsTotal;
     }, 100);
-  }, 1700); // Retain your initial layout settling delay
-}); // 🌟 Clean closure of onMounted without trailing garbage numbers
+  }, 1700);
+});
 
 // --- CHART PLOT LOGIC CONFS ---
 const SavingsData = {
@@ -231,7 +227,6 @@ const donutData = {
   ],
 };
 
-// Change this to a reactive ref
 const MidlleRowGraph = ref({
   labels: ["July", "August", "September", "October", "November", "December"],
   datasets: [
@@ -266,9 +261,9 @@ const chartOptions = {
   resizeDelay: 0,
   animation: { duration: 400 },
   plugins: {
-    legend: { display: false }, // Keeps the top header perfectly clean
+    legend: { display: false },
     tooltip: {
-      backgroundColor: "#1E1E2F", // Matches dark UI theme
+      backgroundColor: "#1E1E2F",
       titleColor: "#ffffff",
       bodyColor: "#A3A3B5",
       borderColor: "rgba(255, 255, 255, 0.1)",
@@ -284,7 +279,7 @@ const chartOptions = {
         color: "rgba(255, 255, 255, 0.6)",
         callback: function (value) {
           return "$" + value;
-        }, // Adds context to the numbers
+        },
       },
     },
     x: {
@@ -317,22 +312,6 @@ const donutOptions = {
   </component>
 
   <div class="app-layout">
-    <!-- <div class="toggle-btn-container" :class="{ shifted: isVisible }">
-          <i
-          class="fa-solid fa-bars"
-        id="icon"
-        @click="toggleSiderbar"
-        style="margin-left: 15px; margin-top: 20px"
-        ></i>
-    </div> -->
-    <!-- <Transition name="slide">
-        <div class="SideBar" id="SideBar" v-show="isVisible">
-            <RouterLink to="/Home" class="a">Home</RouterLink>
-            <RouterLink to="/Transactions" class="a">Transactions</RouterLink>
-            <RouterLink to="/Reports" class="a">Reports</RouterLink>
-            <RouterLink to="/Settings" class="a">Settings</RouterLink>
-        </div>
-    </Transition> -->
     <div class="content-view">
       <div class="navBar">
         <div class="navItems">
@@ -366,32 +345,40 @@ const donutOptions = {
                 </div>
               </div>
             </div>
+
             <p class="goal">
-              Of ${{ financialMetrics.emergency_target }} target
+              Of ${{ financialMetrics.emergency_target || "0" }} target
             </p>
+
             <div class="Pro-container">
               <div
                 class="Pro"
                 :style="{
                   width:
-                    (financialMetrics.emergency_current /
-                      (financialMetrics.emergency_target || 1)) *
-                      100 +
-                    '%',
+                    financialMetrics.emergency_target > 0
+                      ? Math.min(
+                          (financialMetrics.emergency_current /
+                            financialMetrics.emergency_target) *
+                            100,
+                          100,
+                        ) + '%'
+                      : '0%',
                 }"
               >
                 <span
                   v-if="
+                    financialMetrics.emergency_target > 0 &&
                     (financialMetrics.emergency_current /
-                      (financialMetrics.emergency_target || 1)) *
+                      financialMetrics.emergency_target) *
                       100 >
-                    10
+                      10
                   "
                 ></span>
               </div>
             </div>
             <p class="Eme">+$265/mo</p>
           </div>
+
           <div class="Savings">
             <h3>Savings</h3>
             <div class="counter-row">
@@ -407,17 +394,21 @@ const donutOptions = {
               </div>
             </div>
             <p class="target">
-              Of ${{ financialMetrics.savings_target }} Target
+              Of ${{ financialMetrics.savings_target || "0" }} Target
             </p>
             <div class="Pro-container">
               <div
                 class="Pro"
                 :style="{
                   width:
-                    (financialMetrics.current_savings /
-                      (financialMetrics.savings_target || 1)) *
-                      100 +
-                    '%',
+                    financialMetrics.savings_target > 0
+                      ? Math.min(
+                          (financialMetrics.current_savings /
+                            financialMetrics.savings_target) *
+                            100,
+                          100,
+                        ) + '%'
+                      : '0%',
                 }"
               >
                 <span v-if="saving_progress > 10"></span>
@@ -426,6 +417,7 @@ const donutOptions = {
             <p class="save">+$325/mo</p>
           </div>
         </div>
+
         <div class="Core">
           <div class="left">
             <div class="middle-card" :class="{ shifted: isVisible }">
@@ -437,6 +429,7 @@ const donutOptions = {
             </div>
           </div>
         </div>
+
         <div class="grid-transition-zone">
           <div
             class="quotes"
@@ -499,7 +492,7 @@ const donutOptions = {
                       ></path>
                     </svg>
                   </div>
-                  <h3>Known expenses should never be suprises.</h3>
+                  <h3>Known expenses should never be surprises.</h3>
                   <p class="bord">
                     Car registration. Holiday gifts. Annual subscriptions.
                     Divide the total by 12 and automate monthly deposits into
