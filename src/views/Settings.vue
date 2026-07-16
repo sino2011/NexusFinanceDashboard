@@ -8,16 +8,15 @@ const income1 = ref(500);
 const income2 = ref(500);
 const income3 = ref(500);
 
-// Key names updated to match backend expectation
 const extraData = ref({
   monthly_contributed: null,
   debt_contributions: null,
-  emergency_contributions: null, // Fixed: Plural 's' to match backend
+  emergency_contributions: null,
   subscription_name: "",
   subscription_price: "",
   subscription_status: "",
   transaction_name: "",
-  transaction_value: "", // Fixed: Updated from 'transaction_price' to match backend
+  transaction_value: "", // Corrected key matching backend
   transaction_date: "",
 });
 
@@ -36,7 +35,6 @@ function toggleSidebar() {
 
 const sendData = async () => {
   try {
-    // 1. Retrieve the saved JWT token from localStorage
     const token = localStorage.getItem("token");
 
     if (!token) {
@@ -44,10 +42,25 @@ const sendData = async () => {
       return;
     }
 
-    // 2. Pass the token inside the Authorization header
+    // Sanitize data before sending: convert empty strings to null or 0 where numeric values are expected
+    const payload = {
+      ...extraData.value,
+      monthly_contributed: extraData.value.monthly_contributed ?? 0,
+      debt_contributions: extraData.value.debt_contributions ?? 0,
+      emergency_contributions: extraData.value.emergency_contributions ?? 0,
+      subscription_price:
+        extraData.value.subscription_price === ""
+          ? 0
+          : Number(extraData.value.subscription_price),
+      transaction_value:
+        extraData.value.transaction_value === ""
+          ? 0
+          : Number(extraData.value.transaction_value),
+    };
+
     const response = await axios.post(
       "https://yassinafify.pythonanywhere.com/settings",
-      extraData.value,
+      payload,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -57,7 +70,7 @@ const sendData = async () => {
 
     console.log("Settings updated:", response.data);
 
-    // Reset the state upon success
+    // Reset state
     extraData.value = {
       monthly_contributed: null,
       debt_contributions: null,
@@ -230,7 +243,7 @@ const sendData = async () => {
           />
           <input
             class="transactionPrice"
-            v-model="extraData.transaction_price"
+            v-model="extraData.transaction_value"
             type="number"
             placeholder="Value"
           />
