@@ -105,10 +105,16 @@ const getDigitsArray = (num, length) => {
 const fetchHomeData = async () => {
   try {
     isLoadingHome.value = true;
+    const token = localStorage.getItem("token");
     const response = await axios.get(
       "https://yassinafify.pythonanywhere.com/home",
+      {
+        headers: {
+          // 2. Attach the Authorization header
+          Authorization: `Bearer ${token}`,
+        },
+      },
     );
-
     if (response.data && response.data.profile) {
       calculationsData.value = response.data.profile;
     }
@@ -169,8 +175,14 @@ const fetchHomeData = async () => {
 
 const fetchSubscriptions = async () => {
   try {
+    const token = localStorage.getItem("token");
     const response = await axios.get(
       "https://yassinafify.pythonanywhere.com/api/subscriptions",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
     );
     tables.value = response.data.map((item) => ({
       id: item.id,
@@ -231,15 +243,6 @@ const animateCounters = () => {
     return ((currentVal - min) / (max - min)) * 100;
   };
 };
-
-// const GetData = async () => {
-//     try{
-//         const response = await axios.get("http://localhost:5000/home")
-//         calculationsData.value = response.data
-//     }catch(error){
-//         console.error('error sending data', error)
-//     }
-// }
 
 onMounted(() => {
   fetchHomeData();
@@ -377,18 +380,6 @@ const chartOptions = {
     },
   },
 };
-
-// const tables = [
-//     {id:1, name: 'Netflix', value: '30$', status: 'Paid'},
-//     {id:2, name: 'Hulu', value: '20$', status: 'Pending'},
-//     {id:3, name: 'Spotify', value: '9.99$', status: 'Paid'},
-//     {id:4, name: 'Youtube Premium', value: '12$', status: 'Paid'},
-//     {id:5, name: 'ChatGpt Plus', value: '45$', status: 'Pending'},
-// ]
-
-function toggleSiderbar() {
-  isVisible.value = !isVisible.value;
-}
 
 function setNumber(digitElement, value) {
   const height = 50;

@@ -17,7 +17,21 @@ const submitData = async () => {
       "https://yassinafify.pythonanywhere.com/login",
       data.value,
     );
+
     if (response.data?.message === "Login successful") {
+      // 1. Extract the token and user_id from the response
+      const token = response.data.token;
+      const userId = response.data.user_id;
+
+      // 2. Save them securely to localStorage so other pages can use them
+      if (token) {
+        localStorage.setItem("token", token);
+      }
+      if (userId) {
+        localStorage.setItem("user_id", userId);
+      }
+
+      // 3. Route to Home now that authentication is stored
       router.push({ name: "Home" });
     } else {
       error.value = response.data?.error || "Login failed";
