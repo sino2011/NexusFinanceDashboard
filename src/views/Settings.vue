@@ -219,11 +219,10 @@ const sendData = async () => {
             <p>$7,500</p>
           </div>
         </div>
-
-        <p v-if="showExtraSuccess" class="successExtraInfo">
-          Success! View your updated info in the home page
-        </p>
       </div>
+      <p v-if="showExtraSuccess" class="successExtraInfo">
+        Success! View your updated info in the home page
+      </p>
     </div>
 
     <div class="subs">
