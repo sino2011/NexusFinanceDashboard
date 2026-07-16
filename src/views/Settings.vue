@@ -417,9 +417,8 @@ const sendData = async () => {
 
 .countersContainer {
   display: flex;
-  justify-content: center;
-  flex-direction: column;
-  align-items: center;
+  flex-direction: column; /* Stacks .counters and the p tag vertically */
+  align-items: center; /* Keeps them centered horizontally */
   width: 100%;
   margin-bottom: 40px;
 }
@@ -429,8 +428,7 @@ const sendData = async () => {
   flex-direction: row;
   justify-content: space-between;
   gap: 20px;
-  width: 100%;
-  /* animation: fallIn 1s ease-in-out; */
+  width: 100%; /* Spans the full width of the container */
 }
 
 .salaryCard {
@@ -578,13 +576,19 @@ const sendData = async () => {
   box-shadow: rgba(99, 102, 241, 0.4) 0px 10px 40px;
 }
 
-.successExtraInfo,
 .subscriptionSuccessInfo,
 .transactionSuccessInfo {
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  color: rgb(0, 200, 83);
+}
+
+.successExtraInfo {
+  margin-top: 20px; /* Adds space between the bottom of the cards and the text */
+  width: 100%; /* Forces the block line-break */
+  text-align: center;
   color: rgb(0, 200, 83);
 }
 
