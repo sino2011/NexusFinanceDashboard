@@ -137,6 +137,8 @@ function updateSavingsDisplay(value) {
   }
 }
 
+//Change for push
+
 function updateEmergencyDisplay(value) {
   const emergencyStr = String(value).padStart(5, "0");
   const emergencyDigits = emergencyStr.split("").map(Number);
