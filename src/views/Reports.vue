@@ -130,7 +130,7 @@ function setNumber(digitElement, value) {
 
 // --- DISPLAY SYNC HELPERS ---
 function updateSavingsDisplay(value) {
-  const savingsStr = String(95957).padStart(6, "0");
+  const savingsStr = String(value).padStart(6, "0");
   const digitsArray = savingsStr.split("").map(Number);
   for (let i = 1; i <= 6; i++) {
     const el = document.getElementById("dig-" + i);
@@ -141,7 +141,7 @@ function updateSavingsDisplay(value) {
 //Change for push
 
 function updateEmergencyDisplay(value) {
-  const emergencyStr = String(1845).padStart(5, "0");
+  const emergencyStr = String(value).padStart(5, "0");
   const emergencyDigits = emergencyStr.split("").map(Number);
   for (let i = 1; i <= 5; i++) {
     const el = document.getElementById("digit-" + i);
